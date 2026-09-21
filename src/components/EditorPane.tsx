@@ -24,6 +24,7 @@ import type { Active, ToolId } from '../lib/mdkit';
 import { isRichPath } from '../lib/rich';
 import MdToolbar from './MdToolbar';
 import RichPane from './RichPane';
+import { Badge, EditorShell, ModeSwitch, SheetBody } from './EditorShell';
 import { Alert, FileText } from './icons';
 
 type Mode = 'wysiwyg' | 'source';
@@ -408,45 +409,41 @@ export default function EditorPane() {
   if (isRich) return <RichPane key={current} path={current} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex h-9 shrink-0 items-center gap-2.5 border-b border-line px-4 max-md:gap-2 max-md:px-3">
-        <FileText size={13} className="shrink-0 text-ink-3" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-2">{current}</span>
-
-        {fail && <span className="shrink-0 text-[11.5px] text-danger">编辑器异常：{fail}</span>}
-        {dirty && !fail && (
-          <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-warn" title="有未同步的改动" />
-        )}
-
-        {isMd && (
-          <div className="flex shrink-0 rounded-[7px] bg-surface-2 p-[3px]">
-            {(['wysiwyg', 'source'] as Mode[]).map((m) => (
-              <button
-                key={m}
-                data-mode={m}
-                // 切之前先把所见即所得的缓冲落盘：不然源码框拿到的是旧稿，一改就把新写的顶掉
-                onClick={() => {
-                  if (m !== mode) flushEditor();
-                  setMode(m);
-                }}
-                className={`rounded-[5px] px-2.5 py-[2px] text-[12px] transition-colors duration-150 max-md:px-2 max-md:py-[5px] ${
-                  mode === m
-                    ? 'bg-surface font-medium text-ink shadow-[0_1px_2px_rgba(34,31,28,0.09)]'
-                    : 'text-ink-2 hover:text-ink'
-                }`}
-              >
-                {m === 'wysiwyg' ? '所见即所得' : '源码'}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
+    <EditorShell
+      path={current}
+      icon={<FileText size={13} />}
+      tag={isMd ? <Badge tone="accent">MD</Badge> : null}
+      status={
+        <>
+          {fail && <span className="shrink-0 text-[11.5px] text-danger">编辑器异常：{fail}</span>}
+          {dirty && !fail && (
+            <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-warn" title="有未同步的改动" />
+          )}
+        </>
+      }
+      actions={
+        isMd ? (
+          <ModeSwitch
+            value={mode}
+            onChange={(m) => {
+              // 切之前先把所见即所得的缓冲落盘：不然源码框拿到的是旧稿，一改就把新写的顶掉
+              if (m !== mode) flushEditor();
+              setMode(m);
+            }}
+            options={[
+              { value: 'wysiwyg', label: '所见即所得' },
+              { value: 'source', label: '源码' },
+            ]}
+            attrFor={(m) => ({ 'data-mode': m })}
+          />
+        ) : null
+      }
+    >
       {isMd && <MdToolbar active={snap.active} onRun={runTool} currentHref={snap.href} />}
 
       {hasRawHtml && mode === 'wysiwyg' && (
         <div className="shrink-0 border-b border-warn-line bg-warn-soft py-2.5">
-          <div className="mx-auto flex max-w-[44rem] items-start gap-2.5 px-6">
+          <div className="mx-auto flex max-w-[46rem] items-start gap-2.5 px-6">
             <Alert size={14} className="mt-[3px] shrink-0 text-warn" />
             <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-warn">
               这篇含 HTML 标记（如 <code className="font-mono">{'<!-- 注释 -->'}</code>
@@ -454,7 +451,7 @@ export default function EditorPane() {
             </p>
             <button
               onClick={() => setMode('source')}
-              className="shrink-0 rounded-md border border-warn-line bg-surface px-2.5 py-[3px] text-[12px] text-warn transition-colors hover:bg-warn-soft"
+              className="shrink-0 rounded-[8px] border border-warn-line bg-surface px-2.5 py-[3px] text-[12px] text-warn transition-colors hover:bg-warn-soft"
             >
               切到源码
             </button>
@@ -462,22 +459,20 @@ export default function EditorPane() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="editor-sheet">
-          {isMd && mode === 'wysiwyg' ? (
-            <div ref={hostRef} className="milkdown-wrap" />
-          ) : (
-            <textarea
-              ref={taRef}
-              data-source
-              value={draft}
-              onChange={(e) => writeDraft(e.target.value)}
-              spellCheck={false}
-              className="src-editor min-h-[60vh] w-full resize-none bg-transparent font-mono text-[13px] leading-[1.85] text-ink outline-none"
-            />
-          )}
-        </div>
-      </div>
-    </div>
+      <SheetBody>
+        {isMd && mode === 'wysiwyg' ? (
+          <div ref={hostRef} className="milkdown-wrap" />
+        ) : (
+          <textarea
+            ref={taRef}
+            data-source
+            value={draft}
+            onChange={(e) => writeDraft(e.target.value)}
+            spellCheck={false}
+            className="src-editor min-h-[60vh] w-full resize-none bg-transparent font-mono text-[13px] leading-[1.85] text-ink outline-none"
+          />
+        )}
+      </SheetBody>
+    </EditorShell>
   );
 }

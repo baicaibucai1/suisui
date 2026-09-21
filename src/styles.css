@@ -1,24 +1,44 @@
 @import 'tailwindcss';
 
 /*
- * 设计令牌 —— 暖纸 + 墨。侧栏用 paper（略深），主区用 surface（近白），靠明度而不是边框分层。
- * 组件里只用语义名，不许写裸 hex。
+ * 设计令牌 —— 暖纸 + 墨 + 一枚黄铜。
+ *
+ * 三件事在这层定死，组件里只用语义名，不许写裸 hex、不许写裸阴影：
+ *
+ * 1. **明度分层替代边框分层。** 台面（paper）比纸面（surface）深一档，纸再比纸面浅一档；
+ *    相邻两档的差值刚好够"看得出是两层"，不够就该换层，而不是去加一条 border。
+ * 2. **阴影分五级**（xs / sm / md / lg / pop）。每一级只对应一种语义：
+ *    xs 贴在纸面上的控件、sm 拿在手里的按钮、md 浮起的一张纸、
+ *    lg 压在正文之上的临时卡片、pop 脱离文档流的弹层。跳级用就等于没分级。
+ * 3. **衬线只给"名字"用**：碎碎、区块标题、空态主句。正文一律无衬线 ——
+ *    中文衬线在小字号下发虚，成段读起来累。这一条是刻意的，不是漏了。
+ *
+ * 稿纸那抹黄铜（craft）不是装饰色：它是「这张纸是你自己排的」的记号，
+ * 出现在稿纸文件图标、稿纸徽标上，和 md 那套冷钢蓝形成对位。
  */
 @theme {
-  --color-paper: #f5f3ef;
+  --color-paper: #f4f1ec;
+  --color-paper-2: #ece7e0;
   --color-surface: #fffefd;
-  --color-surface-2: #f2efeb;
-  --color-surface-3: #e8e4de;
-  --color-line: #e7e2db;
-  --color-line-2: #d9d3ca;
+  --color-surface-2: #f3f0ea;
+  --color-surface-3: #e7e2da;
+  --color-line: #e8e3db;
+  --color-line-2: #d7d0c6;
+  --color-line-3: #c1b8ad;
 
-  --color-ink: #221f1c;
-  --color-ink-2: #6e6760;
-  --color-ink-3: #a39c94;
+  --color-ink: #211e1b;
+  --color-ink-2: #6b645c;
+  --color-ink-3: #9c948a;
 
-  --color-accent: #3d5d7d;
-  --color-accent-2: #33506e;
-  --color-accent-soft: #eaeff5;
+  --color-accent: #3c5b7a;
+  --color-accent-2: #2f4b66;
+  --color-accent-3: #22384c;
+  --color-accent-soft: #ecf1f6;
+  --color-accent-line: #cedbe9;
+
+  --color-craft: #8a6f45;
+  --color-craft-soft: #f7f1e6;
+  --color-craft-line: #e4d8c1;
 
   --color-ok: #4a7a5c;
   --color-ok-soft: #ebf2ed;
@@ -32,11 +52,40 @@
   --color-danger-soft: #fbedeb;
   --color-danger-line: #eed3ce;
 
+  --shadow-xs: 0 1px 1px rgba(33, 30, 27, 0.05);
+  --shadow-sm: 0 1px 2px rgba(33, 30, 27, 0.06), 0 1px 1px rgba(33, 30, 27, 0.04);
+  --shadow-md: 0 2px 5px -1px rgba(33, 30, 27, 0.08), 0 1px 2px rgba(33, 30, 27, 0.05);
+  --shadow-lg: 0 10px 24px -12px rgba(33, 30, 27, 0.2), 0 2px 6px -2px rgba(33, 30, 27, 0.07);
+  --shadow-pop: 0 20px 44px -16px rgba(33, 30, 27, 0.26), 0 2px 8px -2px rgba(33, 30, 27, 0.1);
+  /* 一张摊在台面上的纸：近距离的一圈细影 + 远处一层大而淡的落影 */
+  --shadow-sheet: 0 1px 2px rgba(33, 30, 27, 0.05), 0 16px 40px -24px rgba(33, 30, 27, 0.28);
+
   --radius-panel: 10px;
+  --radius-card: 14px;
+  --radius-pop: 12px;
 
   --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'Microsoft YaHei',
     sans-serif;
   --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'SFMono-Regular', 'Courier New', monospace;
+  --font-serif: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif;
+}
+
+/*
+ * 台面：一层极淡的暖色渐变打底，上面压一层 3% 的纸纹噪点。
+ * 噪点用 data-uri 里的 feTurbulence 现画，不引外部图片、不联网络。
+ * 只有台面有纹；纸面（surface）保持干净，两者一对比，"纸摊在桌上"才成立。
+ */
+:root {
+  --grad-desk: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(33, 30, 27, 0.035) 100%);
+  --grad-brand: linear-gradient(160deg, #3c5b7a 0%, #2f4b66 55%, #22384c 100%);
+  --grad-brand-tile: linear-gradient(158deg, #3a3733 0%, #211e1b 72%);
+  --grad-primary: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(0, 0, 0, 0.06) 100%);
+  /*
+   * ⚠️ 噪点的强度必须写在 rect 的 **opacity** 上，不是 fill-opacity ——
+   * feTurbulence 根本不读源图形，fill-opacity 对它完全无效，
+   * 写在那儿等于全强度噪点，整页会糊成沙纸（真实踩过）。
+   */
+  --texture-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
 }
 
 html,
@@ -53,10 +102,24 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* 中文界面里数字（字数、文件数、时间）会跳字宽，全局钉住等宽数字 */
+  font-variant-numeric: tabular-nums;
 }
 
 ::selection {
-  background: #d8e3ee;
+  background: #d5e2f0;
+}
+
+/*
+ * 键盘可达性：所有可聚焦控件给一圈统一的焦点环。
+ * 用 :where() 把特异性压到 0 —— 组件里那些自己写 focus 样式的（比如 rich-scope、
+ * ProseMirror）照常能盖住它，不用为了压它去写 !important。
+ * 正文编辑区（.rich-scope）刻意排除：编辑时一整圈蓝框会晃眼。
+ */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: 6px;
 }
 
 /* 细滚动条：静止时几乎看不见，悬停才浮出来 */
@@ -74,16 +137,83 @@ body {
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #cbc4ba;
+  background: #c6bdb1;
   background-clip: content-box;
+}
+
+/* ---------- 几个反复用到的"材质" ---------- */
+
+@layer components {
+  /* 台面：应用最底层的桌面，带纸纹与极淡的顶光 */
+  .desk {
+    background-color: var(--color-paper);
+    background-image: var(--texture-grain), var(--grad-desk);
+    background-size: 160px 160px, 100% 100%;
+    background-repeat: repeat, no-repeat;
+  }
+
+  /* 纸面：真正写字的那张纸。四周一圈 hairline + 一层摊开的落影 */
+  .sheet {
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-sheet);
+    border: 1px solid var(--color-line);
+  }
+
+  /* 主按钮：最重的一颗，整页只该有一颗（同步） */
+  .btn-primary {
+    background-image: var(--grad-primary), var(--grad-brand);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+  .btn-primary:hover {
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  .btn-primary:active {
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
+  }
+
+  /*
+   * 分节小标题：小字号 + 大字距的 overline，右边接一条 hairline 补满剩余宽度，
+   * 像书页上的分节线。刻意**不用衬线** —— 中文衬线在 10px 这个档位会被系统
+   * 点阵化得发虚（SimSun 在小字号上是位图渲染），衬线只留给够大的字：
+   * 应用名、正文标题、空态主句。
+   */
+  .eyebrow {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--color-ink-3);
+    white-space: nowrap;
+  }
+
+  /* 顶栏左上角那枚"印"：深墨渐变 + 顶边一道内高光，才不像一块纯色方块 */
+  .brand-tile {
+    background-image: var(--grad-brand-tile);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      var(--shadow-sm);
+  }
+
+  /* 工具栏 / 弹层里的图标按钮：统一的 28px 方形，悬停浮起一点 */
+  .tool-btn {
+    display: grid;
+    place-items: center;
+    height: 28px;
+    min-width: 28px;
+    flex-shrink: 0;
+    border-radius: 7px;
+    transition:
+      background-color 0.12s,
+      color 0.12s,
+      box-shadow 0.12s;
+  }
 }
 
 /* ---------- 编辑器（Milkdown / Crepe 主题变量映射） ---------- */
 
 .editor-sheet {
-  max-width: 44rem;
+  max-width: 46rem;
   margin: 0 auto;
-  padding: 3.25rem 1.5rem 8rem;
+  padding: 2.75rem 2.25rem 7rem;
 }
 
 .milkdown-wrap {
@@ -131,7 +261,14 @@ body {
 }
 
 .milkdown-wrap .milkdown .ProseMirror h1,
-.milkdown-wrap .milkdown .ProseMirror h2,
+.milkdown-wrap .milkdown .ProseMirror h2 {
+  /* 标题用衬线：一篇东西的"名字"该跟正文分得开，这也是稿纸那套「书卷」预设在做的事 */
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  line-height: 1.32;
+}
+
 .milkdown-wrap .milkdown .ProseMirror h3 {
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -250,7 +387,14 @@ body {
   }
 
   .rich-scope h1,
-  .rich-scope h2,
+  .rich-scope h2 {
+    /* 同 md 编辑器：标题走衬线。用户在「这篇的 CSS」里照样能改掉它 */
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    line-height: 1.32;
+  }
+
   .rich-scope h3,
   .rich-scope h4 {
     font-weight: 600;
@@ -486,6 +630,15 @@ body {
   /* --- 正文留白：左右各 24px 在手机上太奢侈 --- */
   .editor-sheet {
     padding: 1.5rem 1.15rem 6rem;
+  }
+
+  /* 手机上纸面铺满整屏：留白和两边露出的台面都在偷宽度。
+     边框也一并去掉 —— 上下分别是顶栏的 border-b 和状态栏的 border-t，
+     这里再画一条就成双线了。 */
+  .sheet {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   /* --- 底部安全区（手势条 / 圆角屏） --- */

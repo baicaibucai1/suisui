@@ -257,6 +257,7 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/lib/store.ts` | Zustand 状态（本地工作副本 + 快照）。**异步操作带序号，防止旧操作覆盖新状态** |
 | `src/components/RichPane.tsx` | 稿纸编辑器（contenteditable，非受控）＋ 落盘时机控制 |
 | `src/components/RichToolbar.tsx` | 稿纸的 25 个工具 + 色板 / 字号字体弹层 |
+| `src/components/EditorShell.tsx` | 编辑器外壳（台面 → 纸面 → 路径栏 / 模式开关 / 面包屑）。md 与稿纸共用，**必须留在主包里** |
 | `src/components/EmptyState.tsx` | 编辑区的两种"还没有编辑器"状态（空态 / 加载骨架）。**必须在主包里** —— 见「已实现」里的按需加载 |
 | `src/components/` | 顶栏（含移动端抽屉开关） / 文件树（含「创建笔记」） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
 | `src/main.tsx` | 入口。DEV 下把 store 挂到 `window.__suisui`；**只在 PROD 注册 Service Worker** |
@@ -269,19 +270,27 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 
 ## 界面约定
 
-一套「暖纸 + 墨」的配色。令牌全在 `src/styles.css` 的 `@theme` 里，组件里**只用语义名**
-（`bg-surface` / `text-ink-2` / `border-line`…），不写裸 hex。
+一套「暖纸 + 墨 + 一枚黄铜」的视觉。台面（`desk`）是带极淡纸纹的暖灰底，
+正文是摊在台面上的一张白纸（`sheet`，圆角 + 落影 + hairline，手机上退化为满屏）。
+令牌全在 `src/styles.css` 的 `@theme` / `:root` 里，组件里**只用语义名**
+（`bg-surface` / `text-ink-2` / `border-line` / `shadow-pop`…），不写裸 hex、不写裸阴影。
 
 | 令牌 | 用途 |
 | --- | --- |
-| `paper` → `surface` → `surface-2` → `surface-3` | 侧栏纸底 → 主区近白 → 次级块 → 悬停 |
+| `paper` → `surface` → `surface-2` → `surface-3` | 台面 → 纸面 → 工具架/次级块 → 悬停 |
 | `ink` / `ink-2` / `ink-3` | 三级文字 |
-| `accent` | 主按钮、当前选中、待拉取 |
+| `accent`（钢蓝） | 主按钮、当前选中、待拉取 |
+| `craft`（黄铜） | 稿纸专属：稿纸图标、稿纸徽标 —— 「这张纸是你自己排的」的记号 |
 | `ok` / `warn` / `danger` | 待推送 / 有未同步改动 / 冲突与错误 |
+| `shadow-xs/sm/md/lg/pop/sheet` | 五级阴影，各对应一种语义（贴面控件 / 手里按钮 / 浮纸 / 压正文卡片 / 弹层 / 摊开的纸），**别跳级用** |
+| `font-serif` | 只给"名字"：应用名、正文 h1/h2、空态主句。小字号（<14px）一律不用衬线 —— 中文衬线小字会点阵化发虚 |
 
+- 编辑器外壳统一走 `src/components/EditorShell.tsx`（路径栏面包屑 + 模式开关 + 纸面）。
+  md 和稿纸共用一套，**别再在各自的 Pane 里手写路径栏** —— 那正是之前两边漂移的原因。
+  它必须留在主包里（EmptyState 的骨架也用它），所以它一个编辑器依赖都不能 import。
 - 图标统一走 `src/components/icons.tsx`（16 格、`currentColor`、1.5 描边），不用 `●`、`×` 这类字符当图标。
-- **正文测量宽度 = 44rem 居中**（`.editor-sheet`）。改这个宽度时，提示条的 `max-w-[44rem] px-6` 要一起改，
-  否则左边界会错开。
+- **正文测量宽度 = 46rem 居中**（`.editor-sheet`）。改这个宽度时，工具栏和提示条的
+  `max-w-[46rem] px-6` 要一起改，否则左边界会错开。
 - Milkdown 通过 `--crepe-color-*` / `--crepe-font-*` 映射到上面这套令牌（见 `.milkdown-wrap`），换主题只改一处。
 - 关键控件保留 `data-*` 钩子（`data-sync` / `data-refresh` / `data-new` / `data-file` / `data-toggle-all`
   / `data-new-note` / `data-note-kind` / `data-note-title` / `data-note-dir` / `data-note-submit` / `data-delete-confirm`
@@ -292,10 +301,11 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-rich-source` / `data-rich-style`
   / `data-drawer` / `data-drawer-toggle` / `data-drawer-mask`
   / `data-editor-empty` / `data-editor-loading`），e2e 依赖它们。
+- ⚠️ **文件树选中行的 `bg-surface` 不能换**：`tests/mobile-e2e.mjs` 靠
+  `className.includes('bg-surface ')` 把当前行挑出来，再断言其余行没有常显删除按钮。
+  换成别的底色（比如 bg-accent-soft）那条断言会当场假红。
 - **工具栏按钮统一 `onMouseDown` preventDefault**：不放行的话按钮会抢走焦点，编辑器一失焦，
   两种模式的光标位置都得费劲找回来。
-- 工具栏左边界靠 `mx-auto max-w-[44rem] px-6` 与 `.editor-sheet` 对齐（量过：都是 558px）。
-  改正文宽度时这里要一起改。
 - **输入框里的回车要挡输入法组字**：中文输入法用回车"选词"时也会冒泡出 Enter，
   不挡的话打拼音一选字就把笔记建了（`FileTree.tsx` 的 `isComposing()`，判 `isComposing || keyCode === 229`）。
 - 左侧过滤规则全在 `src/lib/visible.ts`：点开头的任意路径段、程序类后缀、`scripts`/`src`/`tests`/`assets`

@@ -20,32 +20,45 @@ export default function StatusBar() {
   const countText = showAll ? `${paths.length} 个文件` : `${shown} / ${paths.length} 个文件`;
   const chars = current ? (files[current] ?? '').replace(/\s/g, '').length : 0;
 
-  const tone = error ? 'bg-danger' : busy ? 'bg-warn' : dirty ? 'bg-warn' : 'bg-ok';
+  // 状态本身做成一枚小胶囊：出错=红、通信中/有未同步=琥珀、就绪=灰。
+  // 颜色只表达"要不要紧"，不表达"是不是成功" —— 成功是常态，不该用彩色喊出来。
+  const pill = error
+    ? 'bg-danger-soft text-danger'
+    : busy
+      ? 'bg-warn-soft text-warn'
+      : dirty
+        ? 'bg-warn-soft text-warn'
+        : 'bg-surface-2 text-ink-2';
+  const dot = error ? 'bg-danger' : busy ? 'bg-warn' : dirty ? 'bg-warn' : 'bg-ok';
+  const label = error ? '出错' : busy ? '通信中' : dirty ? '未同步' : '就绪';
   const message = error ? `错误：${error}` : busy ? '正在与远端通信…' : dirty ? '有未同步的改动' : tail;
 
   return (
-    <footer className="status-bar flex h-[30px] shrink-0 items-center gap-3 border-t border-line bg-surface px-4 text-[11.5px] max-md:gap-2 max-md:px-3">
-      <span className="flex items-center gap-1.5">
-        <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${tone} ${busy ? 'animate-pulse' : ''}`} />
-        <span className={error ? 'text-danger' : 'text-ink-2'}>{error ? '出错' : busy ? '通信中' : '就绪'}</span>
+    <footer className="status-bar flex h-[32px] shrink-0 items-center gap-3 border-t border-line bg-surface px-4 text-[11.5px] max-md:gap-2 max-md:px-3">
+      <span
+        className={`flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[2px] font-medium ${pill}`}
+      >
+        <span
+          className={`h-[6px] w-[6px] shrink-0 rounded-full ${dot} ${busy ? 'animate-pulse' : ''}`}
+        />
+        <span>{label}</span>
       </span>
 
-      <span className={`min-w-0 flex-1 truncate ${error ? 'text-danger' : 'text-ink-3'}`}>{message}</span>
+      <span className={`min-w-0 flex-1 truncate ${error ? 'text-danger' : 'text-ink-3'}`}>
+        {message}
+      </span>
 
       {/* 下面这几个都是桌面才有地方摆的细节；手机上留状态点和消息就够 */}
-      {current && chars > 0 && (
-        <span className="shrink-0 tabular-nums text-ink-3 max-md:hidden">{chars} 字</span>
-      )}
-      <span
-        className="shrink-0 tabular-nums text-ink-3 max-md:hidden"
-        title="左侧可见 / 本地实际持有（程序文件只是不显示，照常同步）"
-      >
-        {countText}
+      <span className="flex shrink-0 items-center gap-3 text-ink-3 max-md:hidden">
+        {current && chars > 0 && <span>{chars} 字</span>}
+        <span
+          title="左侧可见 / 本地实际持有（程序文件只是不显示，照常同步）"
+        >
+          {countText}
+        </span>
+        <span>{token ? '凭据已配置' : '未配置凭据'}</span>
+        {lastSyncAt && <span>同步于 {lastSyncAt}</span>}
       </span>
-      <span className="shrink-0 text-ink-3 max-md:hidden">{token ? '凭据已配置' : '未配置凭据'}</span>
-      {lastSyncAt && (
-        <span className="shrink-0 tabular-nums text-ink-3 max-md:hidden">同步于 {lastSyncAt}</span>
-      )}
     </footer>
   );
 }

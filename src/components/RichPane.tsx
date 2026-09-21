@@ -31,6 +31,7 @@ import {
 } from '../lib/rich';
 import type { RichActive, RichCmd } from '../lib/rich';
 import RichToolbar from './RichToolbar';
+import { Badge, EditorShell, ModeSwitch, SheetBody } from './EditorShell';
 import { Paper } from './icons';
 
 type Mode = 'rich' | 'source';
@@ -491,41 +492,30 @@ export default function RichPane({ path }: { path: string }) {
   const scoped = scopedCss(css);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <EditorShell
+      path={path}
+      icon={<Paper size={13} />}
+      tag={<Badge tone="craft">稿纸</Badge>}
+      status={
+        dirty ? (
+          <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-warn" title="有未同步的改动" />
+        ) : null
+      }
+      actions={
+        <ModeSwitch
+          value={mode}
+          // 不用手动 flush：载入那个 effect 会先落盘再换 DOM
+          onChange={setMode}
+          options={[
+            { value: 'rich', label: '稿纸' },
+            { value: 'source', label: '源码' },
+          ]}
+          attrFor={(m) => ({ 'data-rich-mode': m })}
+        />
+      }
+    >
       {/* 这篇的 CSS。@scope 把范围钉在正文容器上，一行都漏不到界面里 */}
       <style data-rich-style={path}>{scoped}</style>
-
-      <div className="flex h-9 shrink-0 items-center gap-2.5 border-b border-line px-4 max-md:gap-2 max-md:px-3">
-        <Paper size={13} className="shrink-0 text-ink-3" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-2">{path}</span>
-        {/* 文件图标本身就是「稿纸」，手机上没必要再说一遍 */}
-        <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-[1px] text-[10.5px] text-ink-3 max-md:hidden">
-          稿纸
-        </span>
-
-        {dirty && (
-          <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-warn" title="有未同步的改动" />
-        )}
-
-        <div className="flex shrink-0 rounded-[7px] bg-surface-2 p-[3px]">
-          {(['rich', 'source'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              data-rich-mode={m}
-              // 不用手动 flush：载入那个 effect 会先落盘再换 DOM
-              onClick={() => setMode(m)}
-              className={`rounded-[5px] px-2.5 py-[2px] text-[12px] transition-colors duration-150 max-md:px-2 max-md:py-[5px] ${
-                mode === m
-                  ? 'bg-surface font-medium text-ink shadow-[0_1px_2px_rgba(34,31,28,0.09)]'
-                  : 'text-ink-2 hover:text-ink'
-              }`}
-            >
-              {m === 'rich' ? '稿纸' : '源码'}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {mode === 'rich' && (
         <RichToolbar
@@ -539,9 +529,9 @@ export default function RichPane({ path }: { path: string }) {
 
       {mode === 'rich' && cssOpen && (
         <div data-rich-css-panel className="shrink-0 border-b border-line bg-paper">
-          <div className="mx-auto max-w-[44rem] px-6 py-3 max-md:px-3">
+          <div className="mx-auto max-w-[46rem] px-6 py-3 max-md:px-3">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[11px] tracking-[0.06em] text-ink-3">主题</span>
+              <span className="eyebrow mr-1">主题</span>
               {RICH_PRESETS.map((p) => (
                 <button
                   key={p.id}
@@ -549,7 +539,7 @@ export default function RichPane({ path }: { path: string }) {
                   data-rich-preset={p.id}
                   title={p.hint}
                   onClick={() => applyPreset(p.id)}
-                  className="rounded-full bg-surface-2 px-2 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink"
+                  className="rounded-full border border-line bg-surface px-2.5 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:border-accent-line hover:bg-accent-soft hover:text-accent"
                 >
                   {p.label}
                 </button>
@@ -566,52 +556,50 @@ export default function RichPane({ path }: { path: string }) {
                 dirtyRef.current = true;
                 scheduleSave(400);
               }}
-              className="mt-2 h-44 w-full resize-y rounded-[8px] border border-line bg-surface px-2.5 py-2 font-mono text-[12px] leading-[1.7] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent max-md:h-32"
+              className="mt-2.5 h-44 w-full resize-y rounded-[10px] border border-line bg-surface px-3 py-2.5 font-mono text-[12px] leading-[1.7] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent max-md:h-32"
             />
           </div>
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="editor-sheet">
-          {mode === 'rich' ? (
-            <div
-              ref={hostRef}
-              data-rich-doc
-              contentEditable
-              suppressContentEditableWarning
-              spellCheck={false}
-              onInput={(e) => {
-                htmlRef.current = (e.target as HTMLElement).innerHTML;
-                dirtyRef.current = true;
-                scheduleSave();
-                refresh();
-              }}
-              onBlur={() => {
-                const host = hostRef.current;
-                if (host) htmlRef.current = host.innerHTML;
-                scheduleSave(0);
-              }}
-              onPaste={onPaste}
-              className="rich-scope min-h-[60vh] outline-none"
-            />
-          ) : (
-            <textarea
-              ref={taRef}
-              data-rich-source
-              value={draft}
-              spellCheck={false}
-              onChange={(e) => {
-                draftRef.current = e.target.value;
-                setDraft(e.target.value);
-                dirtyRef.current = true;
-                scheduleSave(400);
-              }}
-              className="src-editor min-h-[60vh] w-full resize-none bg-transparent font-mono text-[13px] leading-[1.85] text-ink outline-none"
-            />
-          )}
-        </div>
-      </div>
-    </div>
+      <SheetBody>
+        {mode === 'rich' ? (
+          <div
+            ref={hostRef}
+            data-rich-doc
+            contentEditable
+            suppressContentEditableWarning
+            spellCheck={false}
+            onInput={(e) => {
+              htmlRef.current = (e.target as HTMLElement).innerHTML;
+              dirtyRef.current = true;
+              scheduleSave();
+              refresh();
+            }}
+            onBlur={() => {
+              const host = hostRef.current;
+              if (host) htmlRef.current = host.innerHTML;
+              scheduleSave(0);
+            }}
+            onPaste={onPaste}
+            className="rich-scope min-h-[60vh] outline-none"
+          />
+        ) : (
+          <textarea
+            ref={taRef}
+            data-rich-source
+            value={draft}
+            spellCheck={false}
+            onChange={(e) => {
+              draftRef.current = e.target.value;
+              setDraft(e.target.value);
+              dirtyRef.current = true;
+              scheduleSave(400);
+            }}
+            className="src-editor min-h-[60vh] w-full resize-none bg-transparent font-mono text-[13px] leading-[1.85] text-ink outline-none"
+          />
+        )}
+      </SheetBody>
+    </EditorShell>
   );
 }

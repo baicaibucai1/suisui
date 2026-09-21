@@ -96,10 +96,10 @@ export default function RichToolbar({ active, onRun, cssOpen, onToggleCss, curre
       // 别让按钮抢走焦点：contenteditable 一失焦，选区就没了，命令会落空
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-[6px] px-[5px] transition-colors duration-100 ${
+      className={`tool-btn px-[5px] ${
         isOn
-          ? 'bg-accent-soft text-accent'
-          : 'text-ink-2 hover:bg-surface-2 hover:text-ink active:bg-surface-3'
+          ? 'bg-accent-soft text-accent ring-1 ring-accent-line'
+          : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
       }`}
     >
       {node}
@@ -122,10 +122,12 @@ export default function RichToolbar({ active, onRun, cssOpen, onToggleCss, curre
       run(id),
     );
 
-  return (    <div ref={boxRef} className="relative shrink-0 border-b border-line bg-surface">
+  return (
+    /* 同 md 的工具栏：工具架比纸深一档 */
+    <div ref={boxRef} className="relative shrink-0 border-b border-line bg-surface-2">
       <div
         data-rich-toolbar
-        className="mx-auto flex max-w-[44rem] flex-wrap items-center gap-[3px] px-6 py-[5px]"
+        className="mx-auto flex max-w-[46rem] flex-wrap items-center gap-[3px] px-6 py-[6px]"
       >
         {head('p', '正文', 0)}
         {head('h1', 'H1', 1)}
@@ -273,7 +275,7 @@ export default function RichToolbar({ active, onRun, cssOpen, onToggleCss, curre
               if (composing || e.keyCode === 229) return;
               if (e.key === 'Enter') applyLink();
             }}
-            className="h-7 w-64 rounded-[6px] border border-line bg-surface-2 px-2 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-accent focus:bg-surface"
+            className="h-7 w-64 rounded-[8px] border border-line bg-surface px-2.5 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
           />
           <button
             type="button"
@@ -281,7 +283,7 @@ export default function RichToolbar({ active, onRun, cssOpen, onToggleCss, curre
             onMouseDown={(e) => e.preventDefault()}
             onClick={applyLink}
             disabled={!href.trim()}
-            className="h-7 rounded-[6px] bg-accent px-3 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="btn-primary h-7 rounded-[8px] bg-accent px-3 text-[12px] font-medium text-white transition-[box-shadow,opacity] duration-150 hover:brightness-[1.06] disabled:opacity-40"
           >
             插入
           </button>
@@ -292,14 +294,14 @@ export default function RichToolbar({ active, onRun, cssOpen, onToggleCss, curre
 }
 
 function Sep() {
-  return <span className="mx-[3px] h-[15px] w-px shrink-0 bg-line" />;
+  return <span className="mx-[4px] h-[16px] w-px shrink-0 bg-line-2" />;
 }
 
 function Panel({ children, row }: { children: ReactNode; row?: boolean }) {
   return (
     <div
       data-rich-pop
-      className={`absolute left-1/2 top-full z-30 -translate-x-1/2 rounded-b-[10px] border border-t-0 border-line bg-surface px-3 py-2.5 shadow-[0_10px_24px_-8px_rgba(34,31,28,0.28)] ${
+      className={`absolute left-1/2 top-full z-30 -translate-x-1/2 rounded-b-pop border border-t-0 border-line bg-surface px-3 py-2.5 shadow-pop ${
         row ? 'flex items-center gap-2' : ''
       }`}
     >
@@ -309,9 +311,7 @@ function Panel({ children, row }: { children: ReactNode; row?: boolean }) {
 }
 
 function Legend({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`mb-1.5 text-[11px] tracking-[0.06em] text-ink-3 ${className}`}>{children}</div>
-  );
+  return <div className={`eyebrow mb-2 ${className}`}>{children}</div>;
 }
 
 function Swatches({
@@ -335,7 +335,7 @@ function Swatches({
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(c)}
           style={{ background: c }}
-          className={`h-[18px] w-[18px] rounded-[5px] border border-line-2 transition-transform duration-100 hover:scale-110 ${
+          className={`h-[18px] w-[18px] rounded-[6px] border border-line-2 transition-transform duration-100 hover:scale-110 ${
             now === toRgb(c) ? 'ring-2 ring-accent ring-offset-1' : ''
           }`}
         />
@@ -351,7 +351,7 @@ function ClearRow({ label, onClick }: { label: string; onClick: () => void }) {
       data-rich-clear
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="mt-2 w-full rounded-[6px] border border-line bg-surface-2 px-2 py-[5px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink"
+      className="mt-2 w-full rounded-[8px] border border-line bg-surface-2 px-2 py-[5px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink"
     >
       {label}
     </button>
@@ -380,7 +380,7 @@ function Opt({
       data-opt-kind={kind}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded-[6px] border border-line bg-surface-2 px-2 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink"
+      className="rounded-[8px] border border-line bg-surface px-2 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:border-accent-line hover:bg-accent-soft hover:text-accent"
     >
       <span style={style}>{label}</span>
     </button>

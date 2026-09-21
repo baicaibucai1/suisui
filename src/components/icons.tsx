@@ -152,6 +152,17 @@ export const Menu = (p: IconProps) => (
   </Svg>
 );
 
+/** 顶栏那个分支名前面挂的小钩子 —— 让「分支」不需要再用文字解释一遍 */
+export const Branch = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="4.6" cy="3.6" r="1.5" />
+    <circle cx="4.6" cy="12.4" r="1.5" />
+    <path d="M4.6 5.1v5.8" />
+    <circle cx="11.4" cy="12.4" r="1.5" />
+    <path d="M11.4 10.9V8.4a2.3 2.3 0 0 0-2.3-2.3H8.1" />
+  </Svg>
+);
+
 /* ---------- 编辑器工具栏 ---------- */
 
 export const Bold = (p: IconProps) => (

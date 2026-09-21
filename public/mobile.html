@@ -60,21 +60,24 @@
         align-items: center;
         gap: 5px;
         height: 28px;
-        padding: 0 9px;
+        padding: 0 10px;
         border: 1px solid #e7e2db;
-        border-radius: 6px;
-        background: #f2efeb;
+        border-radius: 8px;
+        background: #fffefd;
         color: #6e6760;
         font: inherit;
         font-size: 12px;
         cursor: pointer;
         white-space: nowrap;
-        transition: background 0.12s, color 0.12s, border-color 0.12s;
+        box-shadow: 0 1px 1px rgba(33, 30, 27, 0.04);
+        transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
       }
       .chip:hover,
       .act:hover {
-        background: #e8e4de;
-        color: #221f1c;
+        border-color: #d7d0c6;
+        background: #f3f0ea;
+        color: #211e1b;
+        box-shadow: 0 1px 2px rgba(33, 30, 27, 0.08);
       }
       .chip[aria-pressed='true'] {
         border-color: #3d5d7d;
@@ -88,13 +91,15 @@
       }
       .act.primary {
         border-color: transparent;
-        background: #3d5d7d;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(0, 0, 0, 0.06) 100%),
+          linear-gradient(160deg, #3c5b7a 0%, #2f4b66 55%, #22384c 100%);
+        box-shadow: 0 1px 2px rgba(33, 30, 27, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
         color: #fffefd;
         font-weight: 500;
       }
       .act.primary:hover {
-        background: #33506e;
         color: #fffefd;
+        filter: brightness(1.06);
       }
       .slider {
         width: 92px;
@@ -102,14 +107,29 @@
       }
       .title {
         display: flex;
-        align-items: baseline;
-        gap: 7px;
+        align-items: center;
+        gap: 8px;
         margin-right: 2px;
       }
-      .title b {
-        font-size: 13.5px;
+      .title i {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: linear-gradient(158deg, #3a3733 0%, #211e1b 72%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(33, 30, 27, 0.2);
+        color: rgba(255, 254, 253, 0.95);
+        font-style: normal;
+        font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', Georgia, 'SimSun', serif;
+        font-size: 13px;
         font-weight: 600;
-        letter-spacing: 0.06em;
+      }
+      .title b {
+        font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', Georgia, 'SimSun', serif;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
       }
       .title span {
         font-family: 'Cascadia Mono', Consolas, monospace;
@@ -205,7 +225,7 @@
   </head>
   <body>
     <header>
-      <div class="title"><b>碎碎</b><span>手机预览</span></div>
+      <div class="title"><i>碎</i><b>碎碎</b><span>手机预览</span></div>
       <div class="group" id="presets"></div>
       <div class="sep"></div>
       <div class="group">

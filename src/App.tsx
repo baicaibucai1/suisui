@@ -39,7 +39,7 @@ export default function App() {
   }, [drawer, setDrawer]);
 
   return (
-    <div className="flex h-full flex-col bg-paper">
+    <div className="desk flex h-full flex-col">
       <TopBar />
       <div className="relative flex min-h-0 flex-1">
         {/*
@@ -50,18 +50,21 @@ export default function App() {
           <div
             data-drawer-mask
             onClick={() => setDrawer(false)}
-            className="absolute inset-0 z-30 hidden bg-ink/25 max-md:block"
+            className="absolute inset-0 z-30 hidden bg-ink/25 backdrop-blur-[1px] max-md:block"
           />
         )}
         {/*
           侧栏本体两种形态共用同一个节点：桌面端是常驻的 272px 列，
           ≤768px 时由 styles.css 把它变成从左侧推入的抽屉（data-open 控制位置）。
           这样切窗口宽度不会重建文件树，滚动位置和折叠状态都留着。
+
+          桌面端这列是**透明的**：文件列表直接坐在台面上，只有"当前打开的那篇"
+          才是一张白纸 —— 一边是散着的纸，一边是摊开的那张，层次就出来了。
         */}
         <aside
           data-drawer
           data-open={drawer ? '1' : '0'}
-          className="flex w-[272px] shrink-0 flex-col border-r border-line bg-paper"
+          className="flex w-[272px] shrink-0 flex-col border-r border-line bg-paper md:bg-transparent"
         >
           <FileTree />
           <ChangeList />
