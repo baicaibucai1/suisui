@@ -168,15 +168,6 @@ export const FolderPlus = (p: IconProps) => (
   </Svg>
 );
 
-/** 壁纸 / 图片 */
-export const Image = (p: IconProps) => (
-  <Svg {...p}>
-    <rect x="2.1" y="3" width="11.8" height="10" rx="1.7" />
-    <circle cx="5.9" cy="6.6" r="1.1" />
-    <path d="M2.5 11.6 5.9 8.7l2.4 2 2.2-1.8 3 2.7" />
-  </Svg>
-);
-
 /** 顶栏那个分支名前面挂的小钩子 —— 让「分支」不需要再用文字解释一遍 */
 export const Branch = (p: IconProps) => (
   <Svg {...p}>

@@ -1,16 +1,16 @@
-// 设置面板 + 台面壁纸的端到端。
+// 设置面板的端到端。
 //
 //   node tests/settings-e2e.mjs                            # 默认打开发服务器 5183
 //   DEMO_URL=http://localhost:5184 node tests/settings-e2e.mjs
 //
 // 验的是几件「改回去功能也全对」的事：
-//   ① 默认是关的 —— 一进来就铺一张 1920 的风景照，只会让人读不清文件名
-//   ② 选了之后图真的下下来了（不是只写了个 CSS 变量，图 404 台面会全白）
-//   ③ 刷新之后还是那张（持久化），且压暗/模糊也跟着回来
-//   ④ 「不用壁纸」能干净地退回纸纹
-//   ⑤ 浮层能被 Esc 收掉（跟抽屉那条一致）
+//   ① 入口在左下角 —— 顶栏只说状况，动手的按钮沉在 dock 上
+//   ② 没做完的后端是 disabled + 标「待接入」，不是假按钮
+//   ③ 凭据跟着后端走（选谁配谁），且没配时齿轮上顶红点
+//   ④ 浮层能被 Esc 收掉（跟抽屉那条一致）
 //
-// ⚠️ 壁纸是随包的静态资源，dev 和 preview 都能直出，所以两边都能跑。
+// ⚠️ 壁纸功能已经整块拿掉了（2026-09-21）。这里留一条负向断言：
+// 台面上不许再出现壁纸层，面板里也不许再有壁纸字样 —— 防止哪天又被塞回来。
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 
@@ -46,38 +46,22 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message.slice(0, 200)));
 
-// 壁纸图到底有没有真下下来：CSS 变量写对了但图 404，台面会是一片空白
-const wallHits = [];
-page.on('response', (r) => {
-  const u = r.url();
-  if (u.includes('/wallpapers/') && u.endsWith('.jpg')) wallHits.push({ url: u, status: r.status() });
-});
-
 const DESK = '.desk';
-const wallAttr = () => page.getAttribute(DESK, 'data-wall');
-const cssVar = (name) =>
-  page.evaluate(
-    ([sel, v]) => getComputedStyle(document.querySelector(sel)).getPropertyValue(v).trim(),
-    [DESK, name],
-  );
-const persisted = () =>
-  page.evaluate(() => {
-    const raw = localStorage.getItem('suisui.demo.v1');
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw).state?.wallpaper ?? null;
-    } catch {
-      return null;
-    }
-  });
 
-step('打开页面：默认不该有壁纸');
+step('打开页面');
 await page.goto(URL, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector(DESK);
 await page.waitForTimeout(1200);
-ok('台面 data-wall=0', (await wallAttr()) === '0', String(await wallAttr()));
-ok('--wall-url 是空的', (await cssVar('--wall-url')) === '');
-ok('没有壁纸层节点', (await page.locator('.desk-wall').count()) === 0);
+// 负向断言：壁纸整块拿掉了，台面不该再有任何壁纸的痕迹
+ok('没有壁纸层节点', (await page.locator('.desk-wall, .desk-wall-img, .desk-wall-veil').count()) === 0);
+ok('台面不再打 data-wall', (await page.getAttribute(DESK, 'data-wall')) === null);
+ok(
+  '没有 --wall-* 变量',
+  await page.evaluate(() => {
+    const s = getComputedStyle(document.querySelector('.desk'));
+    return !s.getPropertyValue('--wall-url').trim() && !s.getPropertyValue('--wall-dim').trim();
+  }),
+);
 
 /*
  * 入口位置：设置和同步都在**左下角那条 dock** 里，不在顶栏。
@@ -109,7 +93,11 @@ step('打开设置面板');
 await page.click('[data-settings]');
 await page.waitForSelector('[data-settings-panel]', { timeout: 5000 });
 ok('面板出来了', await page.isVisible('[data-settings-panel]'));
-ok('面板里有「台面」分区', (await page.textContent('[data-settings-panel]')).includes('台面壁纸'));
+{
+  const text = await page.textContent('[data-settings-panel]');
+  ok('分区是 同步 / 文件列表 / 关于', ['同步', '文件列表', '关于'].every((t) => text.includes(t)));
+  ok('面板里没有壁纸字样了', !text.includes('壁纸') && !text.includes('台面'));
+}
 const panelX = await page.locator('[data-settings-panel]').boundingBox();
 ok('面板从左边出来（跟左下角的入口同一侧）', !!panelX && panelX.x < 2, JSON.stringify(panelX));
 
@@ -151,59 +139,6 @@ step('凭据：跟着后端走，搬出顶栏');
   await page.locator('[data-token]').fill(realToken);
   await page.waitForTimeout(200);
 }
-
-const tiles = page.locator('[data-wall-item]');
-const n = await tiles.count();
-ok(`壁纸列表非空（${n} 张）`, n > 0);
-const firstId = n ? await tiles.first().getAttribute('data-wall-item') : null;
-ok('缩略图都带 id', !!firstId && /^wp-\d{8}$/.test(firstId), String(firstId));
-
-step('选一张壁纸');
-await tiles.first().click();
-await page.waitForFunction(() => document.querySelector('.desk')?.getAttribute('data-wall') === '1', null, {
-  timeout: 6000,
-});
-ok('台面 data-wall=1', (await wallAttr()) === '1');
-const urlVar = await cssVar('--wall-url');
-ok('--wall-url 指向这张图', urlVar.includes(firstId), urlVar);
-ok('壁纸层节点出现了', (await page.locator('.desk-wall-img').count()) === 1);
-const hit = wallHits.find((h) => h.url.includes(firstId));
-ok('图真的下下来了（200）', !!hit && hit.status === 200, hit ? String(hit.status) : '没抓到请求');
-ok('选中项打了标记', (await tiles.first().getAttribute('data-selected')) === '1');
-
-step('压暗与模糊');
-await page.locator('[data-wall-range="dim"]').fill('0.2');
-await page.waitForTimeout(150);
-ok('压暗跟着动', (await cssVar('--wall-dim')) === '0.2', await cssVar('--wall-dim'));
-await page.locator('[data-wall-range="blur"]').fill('12');
-await page.waitForTimeout(150);
-ok('模糊跟着动', (await cssVar('--wall-blur')) === '12px', await cssVar('--wall-blur'));
-ok('面板上显示的是同一个数', (await page.textContent('[data-wall-value="blur"]')).includes('12'));
-await page.screenshot({ path: `${OUT}/06-设置-壁纸.png` });
-
-step('刷新之后还在（持久化）');
-await page.reload({ waitUntil: 'domcontentloaded' });
-await page.waitForSelector(DESK);
-await page.waitForFunction(() => document.querySelector('.desk')?.getAttribute('data-wall') === '1', null, {
-  timeout: 6000,
-});
-ok('刷新后还是那张', (await cssVar('--wall-url')).includes(firstId));
-const saved = await persisted();
-ok('localStorage 里存着 id', saved?.id === firstId, JSON.stringify(saved));
-ok('压暗也存下来了', Math.abs(Number(saved?.dim) - 0.2) < 1e-6, String(saved?.dim));
-ok('模糊也存下来了', Number(saved?.blur) === 12, String(saved?.blur));
-ok('模糊值回到界面上', (await cssVar('--wall-blur')) === '12px');
-
-step('不用壁纸');
-await page.click('[data-settings]');
-await page.waitForSelector('[data-settings-panel]');
-await page.click('[data-wall-clear]');
-await page.waitForFunction(() => document.querySelector('.desk')?.getAttribute('data-wall') === '0', null, {
-  timeout: 4000,
-});
-ok('退回纸纹', (await wallAttr()) === '0');
-ok('--wall-url 清掉了', (await cssVar('--wall-url')) === '');
-ok('壁纸层节点撤了', (await page.locator('.desk-wall').count()) === 0);
 
 step('Esc 收面板');
 await page.keyboard.press('Escape');

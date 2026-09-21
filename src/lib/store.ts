@@ -7,8 +7,6 @@ import { dedupePath, noteBody, notePath } from './note';
 import { RICH_EXT, richBody } from './rich';
 import type { NoteKind } from './rich';
 import type { GhConfig } from './gh';
-import { DEFAULT_WALLPAPER, normalizeWallpaper } from './wallpaper';
-import type { WallpaperConfig } from './wallpaper';
 import { createFolder as makeFolder, removeDir as dropDir } from './folders';
 import { makeRemote } from './providers';
 import type { ProviderId, Remote } from './providers';
@@ -58,7 +56,6 @@ type State = {
    */
   drawer: boolean;
   /** 台面壁纸。**持久化**（换台机器也该是同一张桌子）。 */
-  wallpaper: WallpaperConfig;
   /** 设置面板是否打开。不持久化 —— 每次进来被面板糊住半屏是打扰。 */
   settings: boolean;
   /** 同步到哪家。三种后端的凭据各自存一份，切来切去不用重填。 */
@@ -75,7 +72,6 @@ type State = {
   setToken: (t: string) => void;
   setShowAll: (v: boolean) => void;
   setDrawer: (v: boolean) => void;
-  setWallpaper: (patch: Partial<WallpaperConfig>) => void;
   setSettings: (v: boolean) => void;
   setCurrent: (path: string | null) => void;
   setContent: (path: string, text: string) => void;
@@ -110,7 +106,6 @@ export const useStore = create<State>()(
       pendingDeletes: null,
       planStale: false,
       drawer: false,
-      wallpaper: DEFAULT_WALLPAPER,
       settings: false,
       provider: 'github',
       // 坚果云的地址留着默认那个（就是它家的 WebDAV 入口），账号和应用密码要用户填
@@ -137,7 +132,6 @@ export const useStore = create<State>()(
       setDrawer: (v) => set({ drawer: v }),
       // 过一遍 normalize：localStorage 里那份可能是旧版本写的、也可能被人手改过，
       // 脏值最多让壁纸不显示，不能在渲染时炸出来
-      setWallpaper: (patch) => set({ wallpaper: normalizeWallpaper({ ...get().wallpaper, ...patch }) }),
       setSettings: (v) => set({ settings: v }),
 
       // 顺手收抽屉：手机上的侧栏是浮层，选完还盖着正文就等于白选了。
@@ -263,7 +257,6 @@ export const useStore = create<State>()(
         current: s.current,
         lastSyncAt: s.lastSyncAt,
         showAll: s.showAll,
-        wallpaper: s.wallpaper,
         provider: s.provider,
         dav: s.dav,
         od: s.od,

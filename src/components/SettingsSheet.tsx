@@ -1,18 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { BRANCH, OWNER, REPO, useStore } from '../lib/store';
 import { PROVIDERS } from '../lib/providers';
 import type { ProviderId } from '../lib/providers';
 import { hasDavTransport } from '../lib/providers';
-import {
-  WALLPAPER_BLUR,
-  WALLPAPER_DIM,
-  assetUrl,
-  findWallpaper,
-  loadWallpaperManifest,
-  type WallpaperItem,
-} from '../lib/wallpaper';
-import { Alert, Check, Close, Image, Refresh } from './icons';
+import { Close, Refresh } from './icons';
 
 /*
  * 设置面板：从**左侧**推出的一张纸。
@@ -21,28 +13,18 @@ import { Alert, Check, Close, Image, Refresh } from './icons';
  * 是"另一个地方"，从左边缘长出来才是"齿轮后面那叠东西"。
  *
  * 内容按「改了之后影响多大的一片地方」排序：
- *   同步（东西存在哪儿）→ 台面（整页背景）→ 文件列表（半页）→ 关于（只是说明）。
+ *   同步（东西存在哪儿）→ 文件列表（半页）→ 关于（只是说明）。
  * 同一条设置**不在这里和别处各放一份开关** —— 两处状态同源但视觉不同步时，
  * 用户会以为自己改了没生效（文件列表那个眼睛图标是快捷方式，它俩共用同一个 store 值）。
  *
  * ⚠️ 每一家的凭据都跟它自己的后端放在一起：选 GitHub 才出现 token，
  * 选坚果云才出现账号/应用密码。凭据是"连到这家"的一部分，不该单独成一节
  * 让人先决定"我要配什么"，再决定"我配的是给谁的"。
- *
- * ⚠️ 壁纸列表是**从包里读 manifest**，不是联网抓（理由见 lib/wallpaper.ts 的注释）：
- * 包里没抓过壁纸是正常的初始状态，那只是「列表为空」，不能当错误弹红字。
  */
-
-const BASE = import.meta.env.BASE_URL;
-
-/** manifest 抓一次就够：关掉面板再打开不该重下一遍列表 */
-let cache: { items: WallpaperItem[]; fetchedAt: string; count: number } | null = null;
 
 export default function SettingsSheet() {
   const open = useStore((s) => s.settings);
   const setOpen = useStore((s) => s.setSettings);
-  const wall = useStore((s) => s.wallpaper);
-  const setWall = useStore((s) => s.setWallpaper);
   const showAll = useStore((s) => s.showAll);
   const setShowAll = useStore((s) => s.setShowAll);
   const provider = useStore((s) => s.provider);
@@ -58,29 +40,6 @@ export default function SettingsSheet() {
   const lastSyncAt = useStore((s) => s.lastSyncAt);
   const changes = useStore((s) => s.changes);
 
-  const [items, setItems] = useState<WallpaperItem[]>(cache?.items ?? []);
-  const [fetchedAt, setFetchedAt] = useState(cache?.fetchedAt ?? '');
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!open || cache) {
-      if (cache) setItems(cache.items);
-      return;
-    }
-    let alive = true;
-    void loadWallpaperManifest(BASE)
-      .then((m) => {
-        if (!alive) return;
-        cache = { items: m.items, fetchedAt: m.fetchedAt, count: m.count };
-        setItems(m.items);
-        setFetchedAt(m.fetchedAt);
-      })
-      .catch(() => alive && setFailed(true));
-    return () => {
-      alive = false;
-    };
-  }, [open]);
-
   // Esc 关面板。跟抽屉那条一致：浮层就得能被 Esc 收掉
   useEffect(() => {
     if (!open) return;
@@ -93,9 +52,6 @@ export default function SettingsSheet() {
 
   if (!open) return null;
 
-  const on = wall.enabled && !!wall.id;
-  const cur = findWallpaper(items, wall.id);
-  const day = fetchedAt ? fetchedAt.slice(0, 10) : '—';
   const davReachable = hasDavTransport();
   const meta = PROVIDERS.find((p) => p.id === provider);
 
@@ -266,111 +222,6 @@ export default function SettingsSheet() {
             )}
           </Section>
 
-          <Section title="台面">
-            <Toggle
-              id="wall"
-              label="台面壁纸"
-              hint="把 Bing 每日一图铺在台面上，纸仍然浮在它上面"
-              on={wall.enabled}
-              onChange={(v) => setWall({ enabled: v, ...(v && !wall.id && items[0] ? { id: items[0].id } : {}) })}
-            />
-
-            <div className="mt-3">
-              {items.length === 0 ? (
-                <div className="flex items-start gap-2 rounded-[10px] border border-line bg-surface-2 px-3 py-2.5">
-                  <Alert size={13} className="mt-[2px] shrink-0 text-ink-3" />
-                  <p className="text-[11.5px] leading-relaxed text-ink-2">
-                    {failed ? '这份包里还没有壁纸。' : '正在读壁纸清单…'}
-                    <br />
-                    在项目根目录跑一次
-                    <code className="mx-1 font-mono text-[11px] text-ink">
-                      node scripts/fetch-wallpapers.mjs
-                    </code>
-                    就能抓一批进来。
-                  </p>
-                </div>
-              ) : (
-                <div
-                  data-wall-grid
-                  className="grid grid-cols-3 gap-2 max-md:grid-cols-2"
-                >
-                  {items.map((it) => {
-                    const sel = wall.id === it.id;
-                    return (
-                      <button
-                        key={it.id}
-                        type="button"
-                        data-wall-item={it.id}
-                        data-selected={sel ? '1' : '0'}
-                        title={it.copyright}
-                        // 直接点图 = 「就这张，并且打开」，不让人先开开关再选图
-                        onClick={() => setWall({ enabled: true, id: it.id })}
-                        className={`relative overflow-hidden rounded-[9px] border transition-[border-color,box-shadow] duration-150 ${
-                          sel
-                            ? 'border-accent shadow-sm'
-                            : 'border-line hover:border-line-2 hover:shadow-xs'
-                        }`}
-                      >
-                        <img
-                          src={assetUrl(it.thumb, BASE)}
-                          alt={it.title}
-                          loading="lazy"
-                          className="aspect-[16/10] w-full object-cover"
-                        />
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-ink/75 to-transparent px-1.5 pb-1 pt-2.5 text-[10px] text-white/95">
-                          {it.title}
-                        </span>
-                        {sel && (
-                          <span className="absolute right-1 top-1 grid h-[15px] w-[15px] place-items-center rounded-full bg-accent text-white shadow-xs">
-                            <Check size={9} strokeWidth={2.8} />
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {items.length > 0 && (
-                <div className="mt-2.5 flex items-center justify-between">
-                  <span className="truncate text-[11px] text-ink-3">
-                    {on && cur ? `当前：${cur.title}` : '当前：台面本来的纸纹'}
-                  </span>
-                  <button
-                    data-wall-clear
-                    onClick={() => setWall({ enabled: false, id: null })}
-                    className="shrink-0 rounded-[7px] border border-line px-2 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
-                  >
-                    不用壁纸
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <Slider
-                id="dim"
-                label="压暗"
-                value={wall.dim}
-                min={WALLPAPER_DIM.min}
-                max={WALLPAPER_DIM.max}
-                step={WALLPAPER_DIM.step}
-                format={(v) => `${Math.round(v * 100)}%`}
-                onChange={(v) => setWall({ dim: v })}
-              />
-              <Slider
-                id="blur"
-                label="模糊"
-                value={wall.blur}
-                min={WALLPAPER_BLUR.min}
-                max={WALLPAPER_BLUR.max}
-                step={WALLPAPER_BLUR.step}
-                format={(v) => `${v}px`}
-                onChange={(v) => setWall({ blur: v })}
-              />
-            </div>
-          </Section>
-
           <Section title="文件列表">
             <Toggle
               id="showall"
@@ -383,19 +234,14 @@ export default function SettingsSheet() {
 
           <Section title="关于">
             <div className="space-y-1.5 text-[11.5px] leading-relaxed text-ink-3">
-              <p className="flex items-center gap-1.5">
-                <Image size={12} className="shrink-0 text-ink-3" />
-                壁纸来自 Bing 每日一图，共 {items.length || 0} 张，抓于 <span className="font-mono">{day}</span>
+              <p>
+                碎碎读的是<b className="font-medium text-ink-2">真的 markdown 文件</b>：
+                笔记落盘成 <span className="font-mono">.md</span>，同步是拿这些文件去和远端对账，
+                没有中间格式、也没有私有数据库。
               </p>
               <p>
-                壁纸是<b className="font-medium text-ink-2">随包</b>的，运行时不联网 ——
-                Bing 的图不带 CORS 头，为它开一条代理通道不值得。
-              </p>
-              <p>
-                想换一批：
-                <code className="mx-1 font-mono text-[11px] text-ink-2">
-                  node scripts/fetch-wallpapers.mjs --days=12
-                </code>
+                当前库：<span className="font-mono">{OWNER}/{REPO}</span>，分支{' '}
+                <span className="font-mono">{BRANCH}</span>。demo 阶段凭据存在本机 localStorage。
               </p>
             </div>
           </Section>
@@ -455,46 +301,5 @@ function Toggle({
         />
       </span>
     </button>
-  );
-}
-
-function Slider({
-  id,
-  label,
-  value,
-  min,
-  max,
-  step,
-  format,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  format: (v: number) => string;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="flex items-baseline justify-between">
-        <span className="text-[12px] text-ink-2">{label}</span>
-        <span data-wall-value={id} className="font-mono text-[11px] text-ink-3">
-          {format(value)}
-        </span>
-      </span>
-      <input
-        type="range"
-        data-wall-range={id}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="slider mt-1.5 w-full"
-      />
-    </label>
   );
 }

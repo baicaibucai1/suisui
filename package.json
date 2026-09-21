@@ -7,8 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc -b",
-    "wallpapers": "node scripts/fetch-wallpapers.mjs"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@milkdown/crepe": "^7.22.1",
