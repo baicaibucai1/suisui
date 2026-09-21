@@ -85,6 +85,19 @@ await page.waitForSelector('[data-settings-panel]', { timeout: 5000 });
 ok('面板出来了', await page.isVisible('[data-settings-panel]'));
 ok('面板里有「台面」分区', (await page.textContent('[data-settings-panel]')).includes('台面壁纸'));
 
+step('同步：后端不放假按钮');
+ok('三个后端都列出来了', (await page.locator('[data-provider]').count()) === 3);
+ok('GitHub 默认选中', (await page.getAttribute('[data-provider="github"]', 'class'))?.includes('bg-accent-soft') === true);
+// 没做完的后端必须是 disabled + 标「待接入」：给一个按了没反应的按钮比不给更糟
+ok('OneDrive 点不动（授权还没接）', await page.locator('[data-provider="onedrive"]').isDisabled());
+ok('OneDrive 标了待接入', (await page.textContent('[data-provider="onedrive"]')).includes('待接入'));
+await page.click('[data-provider="nutstore"]');
+await page.waitForSelector('[data-dav-warn]');
+ok('网页版把坚果云的限制说清楚了', (await page.textContent('[data-dav-warn]')).includes('CORS'));
+ok('坚果云的凭据框在（先填着，桌面端能用）', await page.isVisible('[data-dav-user]'));
+// 切回去：provider 是持久化的，留在坚果云上会让后面的用例连错地方
+await page.click('[data-provider="github"]');
+
 const tiles = page.locator('[data-wall-item]');
 const n = await tiles.count();
 ok(`壁纸列表非空（${n} 张）`, n > 0);

@@ -9,3 +9,7 @@ dist/
 # （截图每次跑 e2e 都会重写，提交了就是永远在变的 diff）
 tsconfig.tsbuildinfo
 shots/
+
+# 桌面端的 Rust 产物：几百 MB，cargo 自己会重建
+src-tauri/target/
+src-tauri/gen/

@@ -10,6 +10,27 @@ if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__suisui = useStore;
 }
 
+/*
+ * 桌面端才有的一条通道：**坚果云的 WebDAV 要在这里发**。
+ *
+ * 它的服务器不返回 CORS 头，浏览器里（包括安卓 WebView）连 PROPFIND 的预检都过不去 ——
+ * 所以前端那个 WebDAV 适配器把请求抽象成一个 transport，桌面端把这条 Rust 命令注册进去，
+ * 网页版没有 transport，界面上就标「要用桌面端」，不给一个按了没反应的按钮。
+ *
+ * 用动态 import：浏览器版不该为了一个用不上的通道去拉 @tauri-apps/api。
+ */
+if ('__TAURI_INTERNALS__' in window) {
+  void (async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { setDavTransport } = await import('./lib/providers');
+      setDavTransport((req) => invoke('dav_request', { ...req }) as Promise<{ status: number; text: string }>);
+    } catch {
+      // 注册不上就退化成"坚果云不可用"，别把整个应用拖挂
+    }
+  })();
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

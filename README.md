@@ -101,12 +101,64 @@ VITE_GH_BRANCH=main
   `api.github.com` 一律放行到网络（缓存住实时数据等于把用户锁在旧快照上）。
   实测断网后照样打开、本地笔记还在
 
+## 同步后端：GitHub / 坚果云 / OneDrive
+
+比对引擎（`lib/sync.ts`）**只认一个接口** `Remote`（`lib/providers/types.ts`）：
+
+```ts
+list(): Promise<{ path, sha }[]>      // 列全部文件
+read(path): Promise<string>           // 读原文
+write(changes, message): Promise<void>// 落一批改动（content = null 是删除）
+```
+
+三家的差别只在实现里：
+
+| 后端 | 协议 | 状态 |
+| --- | --- | --- |
+| GitHub | Git Data API（一个仓库当库，一次同步一个 commit） | 可用（一直是它） |
+| 坚果云 | WebDAV（`dav.jianguoyun.com/dav/`） | **要在桌面端跑** —— 见下 |
+| OneDrive | Microsoft Graph | 读写就位，**授权待接入**（要 Azure 应用的 client_id） |
+
+两条绕不开的限制，都是查证过的，不是猜想：
+
+- **坚果云的 WebDAV 不返回 CORS 头**，浏览器的 PROPFIND 预检连鉴权都过不去，官方对此的答复是
+  "我们实现的是标准 WebDAV 服务端协议"（即不打算支持）。所以这条路的请求**走注入的 transport**：
+  桌面端（Tauri）在 Rust 侧发（`src-tauri/src/main.rs` 的 `dav_request`），没有同源策略这一说。
+  网页版没有 transport，界面上照实标「要用桌面端」。
+- **OneDrive 的 Graph 放 CORS**，浏览器直连没问题，缺的是授权：OAuth 需要一个 Azure 应用的
+  client_id 走 PKCE 换 token，注册应用得账号主人去做。所以 `onedrive.ts` 只接 token，
+  留空就是「待接入」，界面上 disabled + 标出来（不放假按钮）。
+
+### 一个不那么显然的取舍：`list()` 的 sha 必须是**内容指纹**
+
+三路比对（`decide.ts`）比的是「本地 sha × 上次快照 × 远端 sha」，三个值必须**同一种算法**，
+同步完两边内容相同 → 指纹相同，才能用一个值代表"基线"。
+
+GitHub 的 blob sha 正好就是 git 的 blob 哈希，本地算得出来。网盘没有这个：WebDAV 给 ETag、
+OneDrive 给 quickXorHash，算法跟本地不同 —— 直接拿来当基线，"本地没动"会被判成"本地改了"
+（两边永远不相等）。所以**非 Git 后端在 `list()` 时把内容取回来现算指纹**，内容顺手缓存住给
+`read()` 用。代价是列目录要下载全部内容；换来的好处是判定表、快照格式、冲突处理一家都不用改。
+
+## 文件夹
+
+文件夹**不是"一个空壳"**：git 里空目录根本不存在，而网盘里空目录又确实存在 —— 同一个工作副本
+要在几种后端之间换来换去，行为必须一致。所以统一成：目录里放一个隐藏的标识文件 `.folder`
+（和 Obsidian 在每个库里放 `.obsidian` 是同一个思路）。它点开头，左侧列表本来就隐藏这类路径段，
+用户看不见它，而它在任何后端上都是一个真实的文件 —— 目录因此"真的存在"了。
+
+规则都在 `lib/folders.ts`：目录名清洗（`..` 不许跳出库、Windows 非法字符、每段截断 60 字）、
+建/删目录、嵌套建树。文件树是真正的多级树（原来只有一层分组），空目录也显示，
+"创建笔记"的去处里会带上自己建的目录。
+
 ## 还没做
 
 - **打真正的包**：Android apk 和 Windows exe 都还没出。缺 JDK / Android SDK+NDK / MSVC 工具链，
-  清单和步骤写在 [`ANDROID.md`](./ANDROID.md) 里
+  清单和步骤写在 [`ANDROID.md`](./ANDROID.md) 里。
+  桌面端骨架（`src-tauri/`）已经搭起来，目前只提供一个 `dav_request` 命令给坚果云用
 - 真实文件系统（现在工作副本在 localStorage；桌面版要落到 `C:\AI_Production\碎碎`）
-- 系统凭据库（现在 token 在 `.env.local` / localStorage）
+- 系统凭据库（现在 token / 坚果云应用密码都在 localStorage）
+- OneDrive 的 OAuth 授权（要 Azure 应用的 client_id 走 PKCE）
+- 安卓端的坚果云（同样卡在 CORS，需要原生插件走 Kotlin 发 WebDAV）
 - 冲突的三路自动合并（现在只留副本）
 - 图片等二进制
 
@@ -119,6 +171,9 @@ node tests/visible.test.mjs       # 左侧「哪些不该显示」25 例
 node tests/mdkit.test.mjs         # md 工具栏源码模式 67 例（标题 / 列表 / 行内包裹 / 选区映射）
 node tests/rich.test.mjs          # 稿纸格式内核 50 例（拆合 / 圈作用域 / 清洗 / 主题预设）
 node tests/wallpaper.test.mjs     # 壁纸配置清洗与取址 37 例（脏 localStorage / 目录穿越 / base 拼接）
+node tests/folder.test.mjs        # 文件夹 58 例（目录名清洗 / 标识文件 / 空目录推导 / 嵌套建树）
+node tests/davxml.test.mjs        # WebDAV 的 PROPFIND 解析 15 例（编码 / 库根剥离 / 各家写法差异）
+node tests/folder-e2e.mjs         # 浏览器：建多层文件夹 → 空目录看得见 → 往里写笔记 → 删（含确认）
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
 node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
 node tests/settings-e2e.mjs       # 设置面板 + 壁纸 26 例（默认关 / 图真的下下来了 / 刷新还在 / Esc / 手机全宽）
@@ -256,6 +311,13 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/lib/mdkit.ts` | md 工具栏**源码模式**的 md 语法改写（零依赖，可单测）＋ 两种模式共用的 `ToolId` / `Active` |
 | `src/lib/rich.ts` | 稿纸格式内核：拆合「这篇的 CSS / 正文」、`scopedCss` 圈作用域、HTML 清洗、主题预设（零依赖，可单测） |
 | `src/lib/wallpaper.ts` | 壁纸配置清洗 + 取址（零依赖、不碰 `import.meta.env`，可单测） |
+| `src/lib/folders.ts` | 文件夹：目录名清洗、标识文件、目录推导、嵌套建树（零依赖，可单测） |
+| `src/lib/providers/types.ts` | 同步后端的统一接口 `Remote` + 各家元数据（含"浏览器能不能直连 / 做完没有"） |
+| `src/lib/providers/github.ts` | GitHub 实现（Git Data API，一个 commit） |
+| `src/lib/providers/webdav.ts` | 坚果云实现（WebDAV）。请求走注入的 transport —— 浏览器没有，桌面端才有 |
+| `src/lib/providers/onedrive.ts` | OneDrive 实现（Microsoft Graph）。只接 token，授权留位 |
+| `src/lib/providers/davxml.ts` | PROPFIND 响应解析（零依赖，可单测 —— 用正则而非 DOMParser） |
+| `src-tauri/` | 桌面端骨架。目前只提供 `dav_request`：让坚果云绕开 CORS |
 | `src/lib/sync.ts` | 同步编排（先拉 → 冲突留副本 → 确认后才删 → 再推） |
 | `src/lib/store.ts` | Zustand 状态（本地工作副本 + 快照）。**异步操作带序号，防止旧操作覆盖新状态** |
 | `src/components/RichPane.tsx` | 稿纸编辑器（contenteditable，非受控）＋ 落盘时机控制 |
@@ -305,6 +367,9 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-rich-source` / `data-rich-style`
   / `data-drawer` / `data-drawer-toggle` / `data-drawer-mask`
   / `data-settings` / `data-settings-panel` / `data-settings-mask` / `data-settings-close` / `data-toggle="showall"`
+  / `data-provider="<后端>"` / `data-dav-url` / `data-dav-user` / `data-dav-pass` / `data-dav-warn` / `data-od-token` / `data-od-base`
+  / `data-new-folder` / `data-folder-name` / `data-folder-submit` / `data-dir="<目录>"` / `data-dir-del="<目录>"`
+  / `data-folder-del-confirm` / `data-folder-del-ok` / `data-folder-del-cancel`
   / `data-wall-grid` / `data-wall-item="<id>"` / `data-selected` / `data-wall-clear` / `data-toggle="wall"`
   / `data-wall-range="dim|blur"` / `data-wall-value="dim|blur"`
   / `data-editor-empty` / `data-editor-loading`），e2e 依赖它们。

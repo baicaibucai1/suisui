@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "桌面端默认权限：只有窗口和事件，没有文件系统（工作副本还在 localStorage，等后面接真实文件系统再开）",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

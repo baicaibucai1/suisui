@@ -1,0 +1,17 @@
+# Cargo 配置：GNU 工具链（本机 rustc 是 x86_64-pc-windows-gnu，链接器和 ar 得指到 msys2 的 mingw64）
+#
+# 不加这一段会报 `error calling dlltool 'dlltool.exe': program not found` ——
+# windows-link 在 GNU 目标下要 dlltool 生成导入库，而它在 PATH 里没有。
+# 位置和写法跟 `Tools/main/src-tauri/.cargo/config.toml` 保持一致（那边已经跑通打包）。
+
+[build]
+target = "x86_64-pc-windows-gnu"
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\Users\\Sogap\\msys64\\mingw64\\bin\\gcc.exe"
+ar = "C:\\Users\\Sogap\\msys64\\mingw64\\bin\\ar.exe"
+# 打包（cdylib）时还要这一条，但 **`cargo check` / dev 构建会被它拖挂**：
+#   "-C", "link-arg=-Wl,-exclude-all-symbols",
+# MinGW 构建 DLL 默认导出全部静态库符号，而 Windows PE 的导出序号上限 65535，
+# Tauri 依赖的 windows crate 远超此限（export ordinal too large）。
+# 只导出显式标记的函数即可。要出安装包时再把它放回来（Tools/main 那份里是开着的）。
