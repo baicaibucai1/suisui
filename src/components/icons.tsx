@@ -152,6 +152,23 @@ export const Menu = (p: IconProps) => (
   </Svg>
 );
 
+/** 设置：一枚齿环。顶栏右侧那颗 */
+export const Gear = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="2.3" />
+    <path d="M8 1.5v1.7M8 12.8v1.7M2.8 2.8l1.2 1.2M12 12l1.2 1.2M1.5 8h1.7M12.8 8h1.7M2.8 13.2l1.2-1.2M12 4l1.2-1.2" />
+  </Svg>
+);
+
+/** 壁纸 / 图片 */
+export const Image = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.1" y="3" width="11.8" height="10" rx="1.7" />
+    <circle cx="5.9" cy="6.6" r="1.1" />
+    <path d="M2.5 11.6 5.9 8.7l2.4 2 2.2-1.8 3 2.7" />
+  </Svg>
+);
+
 /** 顶栏那个分支名前面挂的小钩子 —— 让「分支」不需要再用文字解释一遍 */
 export const Branch = (p: IconProps) => (
   <Svg {...p}>

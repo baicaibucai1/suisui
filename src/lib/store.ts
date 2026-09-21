@@ -7,6 +7,8 @@ import { dedupePath, noteBody, notePath } from './note';
 import { RICH_EXT, richBody } from './rich';
 import type { NoteKind } from './rich';
 import type { GhConfig } from './gh';
+import { DEFAULT_WALLPAPER, normalizeWallpaper } from './wallpaper';
+import type { WallpaperConfig } from './wallpaper';
 
 const ENV_TOKEN = (import.meta.env.VITE_GH_TOKEN as string | undefined) ?? '';
 
@@ -50,11 +52,17 @@ type State = {
    * **不持久化** —— 每次打开都该是收起的，不能让人一进来就被抽屉糊住整屏。
    */
   drawer: boolean;
+  /** 台面壁纸。**持久化**（换台机器也该是同一张桌子）。 */
+  wallpaper: WallpaperConfig;
+  /** 设置面板是否打开。不持久化 —— 每次进来被面板糊住半屏是打扰。 */
+  settings: boolean;
 
   cfg: () => GhConfig;
   setToken: (t: string) => void;
   setShowAll: (v: boolean) => void;
   setDrawer: (v: boolean) => void;
+  setWallpaper: (patch: Partial<WallpaperConfig>) => void;
+  setSettings: (v: boolean) => void;
   setCurrent: (path: string | null) => void;
   setContent: (path: string, text: string) => void;
   createFile: (path: string) => void;
@@ -84,12 +92,18 @@ export const useStore = create<State>()(
       pendingDeletes: null,
       planStale: false,
       drawer: false,
+      wallpaper: DEFAULT_WALLPAPER,
+      settings: false,
 
       cfg: () => ({ owner: OWNER, repo: REPO, branch: BRANCH, token: get().token }),
 
       setToken: (t) => set({ token: t }),
       setShowAll: (v) => set({ showAll: v }),
       setDrawer: (v) => set({ drawer: v }),
+      // 过一遍 normalize：localStorage 里那份可能是旧版本写的、也可能被人手改过，
+      // 脏值最多让壁纸不显示，不能在渲染时炸出来
+      setWallpaper: (patch) => set({ wallpaper: normalizeWallpaper({ ...get().wallpaper, ...patch }) }),
+      setSettings: (v) => set({ settings: v }),
 
       // 顺手收抽屉：手机上的侧栏是浮层，选完还盖着正文就等于白选了。
       // 桌面端抽屉本来就不可见，多带这一个字段没有任何影响。
@@ -191,6 +205,7 @@ export const useStore = create<State>()(
         current: s.current,
         lastSyncAt: s.lastSyncAt,
         showAll: s.showAll,
+        wallpaper: s.wallpaper,
       }),
     },
   ),

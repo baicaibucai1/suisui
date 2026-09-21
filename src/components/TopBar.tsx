@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { BRANCH, OWNER, REPO, useStore } from '../lib/store';
-import { Alert, ArrowDown, ArrowUp, Branch, Check, Key, Menu, Refresh } from './icons';
+import { Alert, ArrowDown, ArrowUp, Branch, Check, Gear, Key, Menu, Refresh } from './icons';
 
 /*
  * 顶栏 = 这一页的"抬头"。
@@ -55,7 +55,14 @@ export default function TopBar() {
   const planStale = useStore((s) => s.planStale);
   const drawer = useStore((s) => s.drawer);
   const setDrawer = useStore((s) => s.setDrawer);
+  const settings = useStore((s) => s.settings);
+  const setSettings = useStore((s) => s.setSettings);
   const [showToken, setShowToken] = useState(false);
+
+  // 设置面板一开，凭据那个小浮层就收起来：它俩都挂在顶栏右侧，叠在一起谁也看不清
+  useEffect(() => {
+    if (settings) setShowToken(false);
+  }, [settings]);
 
   const push = changes.filter((c) => c.kind.startsWith('push')).length;
   const pull = changes.filter((c) => c.kind.startsWith('pull')).length;
@@ -170,6 +177,21 @@ export default function TopBar() {
             {!token && (
               <span className="pointer-events-none absolute right-[5px] top-[5px] h-1.5 w-1.5 rounded-full bg-danger ring-2 ring-surface" />
             )}
+          </button>
+
+          <button
+            data-settings
+            onClick={() => setSettings(!settings)}
+            aria-expanded={settings}
+            aria-label="设置"
+            title="设置"
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border transition-colors duration-150 max-md:h-9 max-md:w-9 ${
+              settings
+                ? 'border-line-2 bg-surface-2 text-ink'
+                : 'border-transparent text-ink-3 hover:bg-surface-2 hover:text-ink-2'
+            }`}
+          >
+            <Gear size={14} />
           </button>
         </div>
       </div>

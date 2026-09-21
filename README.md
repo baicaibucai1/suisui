@@ -118,8 +118,10 @@ node tests/note.test.mjs          # 笔记命名规则 31 例（非法字符 / �
 node tests/visible.test.mjs       # 左侧「哪些不该显示」25 例
 node tests/mdkit.test.mjs         # md 工具栏源码模式 67 例（标题 / 列表 / 行内包裹 / 选区映射）
 node tests/rich.test.mjs          # 稿纸格式内核 50 例（拆合 / 圈作用域 / 清洗 / 主题预设）
+node tests/wallpaper.test.mjs     # 壁纸配置清洗与取址 37 例（脏 localStorage / 目录穿越 / base 拼接）
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
 node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
+node tests/settings-e2e.mjs       # 设置面板 + 壁纸 26 例（默认关 / 图真的下下来了 / 刷新还在 / Esc / 手机全宽）
 node tests/mobile-e2e.mjs         # 手机视口 57 例（抽屉 / 工具栏横滚 / 触摸尺寸 / 顶栏精简 / 手机壳页 / 桌面不回归）
 node tests/pwa-e2e.mjs            # 产物上的 PWA 15 例（SW 注册 → 断开网络仍能打开）
 node tests/lazy-e2e.mjs           # 编辑器按需加载 21 例（入口包里没有编辑器 / 首屏不拉 / 加载中给骨架）
@@ -253,6 +255,7 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/lib/visible.ts` | 「哪些文件不该显示在左侧」的展示层规则（零依赖，可单测） |
 | `src/lib/mdkit.ts` | md 工具栏**源码模式**的 md 语法改写（零依赖，可单测）＋ 两种模式共用的 `ToolId` / `Active` |
 | `src/lib/rich.ts` | 稿纸格式内核：拆合「这篇的 CSS / 正文」、`scopedCss` 圈作用域、HTML 清洗、主题预设（零依赖，可单测） |
+| `src/lib/wallpaper.ts` | 壁纸配置清洗 + 取址（零依赖、不碰 `import.meta.env`，可单测） |
 | `src/lib/sync.ts` | 同步编排（先拉 → 冲突留副本 → 确认后才删 → 再推） |
 | `src/lib/store.ts` | Zustand 状态（本地工作副本 + 快照）。**异步操作带序号，防止旧操作覆盖新状态** |
 | `src/components/RichPane.tsx` | 稿纸编辑器（contenteditable，非受控）＋ 落盘时机控制 |
@@ -267,6 +270,7 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `public/icons/` | 主屏图标（`scripts/gen-icons.mjs` 生成，别手改） |
 | `scripts/build.mjs` | 生产构建（暂存目录 + 自检 + 换目录）＋ 报首屏引用与 chunk 体积 |
 | `scripts/gen-icons.mjs` | 生成 PWA 主屏图标（用本机 Edge 渲染，不引原生依赖） |
+| `scripts/fetch-wallpapers.mjs` | 抓 Bing 每日壁纸进 `public/wallpapers/` 并写 manifest（幂等，`--days=N` 控制天数） |
 
 ## 界面约定
 
@@ -300,7 +304,19 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-rich-mode` / `data-rich-preset` / `data-rich-css` / `data-rich-css-panel` / `data-rich-doc`
   / `data-rich-source` / `data-rich-style`
   / `data-drawer` / `data-drawer-toggle` / `data-drawer-mask`
+  / `data-settings` / `data-settings-panel` / `data-settings-mask` / `data-settings-close` / `data-toggle="showall"`
+  / `data-wall-grid` / `data-wall-item="<id>"` / `data-selected` / `data-wall-clear` / `data-toggle="wall"`
+  / `data-wall-range="dim|blur"` / `data-wall-value="dim|blur"`
   / `data-editor-empty` / `data-editor-loading`），e2e 依赖它们。
+  另有容器级钩子：`.desk` 上的 **`data-wall="0|1"`**（壁纸铺了没，`settings-e2e` 靠它断言）。
+- **壁纸是三层结构，别合并**（`styles.css` 的 `.desk-wall-*`）：图（自己模糊，向外扩 2 倍半径防透明边）
+  → 纸色遮罩（压暗，`--wall-dim`）→ 其余内容（`z-index: 1` 抬到壁纸上面）。
+  遮罩不分层的话，模糊会把压暗一起糊掉，边缘渗出一圈毛边。
+  壁纸开着时顶栏/底栏/侧栏自动变毛玻璃（`[data-wall='1']` 规则），字压在照片上才读得清。
+- **壁纸运行时不联网**（`lib/wallpaper.ts` 开头写了完整理由）：Bing 图不带 CORS 头，
+  为装饰品开一条代理通道不值 —— 所以是 `scripts/fetch-wallpapers.mjs` 抓好随包，离线可用。
+  取址也**不依赖 manifest**：文件名规则 `wallpapers/<id>.jpg`，图先 `new Image()` 下载完才铺
+  （直接给 CSS 会闪空白；404 就退回纸纹）。manifest 只喂「设置里的列表」。
 - ⚠️ **文件树选中行的 `bg-surface` 不能换**：`tests/mobile-e2e.mjs` 靠
   `className.includes('bg-surface ')` 把当前行挑出来，再断言其余行没有常显删除按钮。
   换成别的底色（比如 bg-accent-soft）那条断言会当场假红。

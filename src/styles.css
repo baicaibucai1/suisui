@@ -152,6 +152,112 @@ body {
     background-repeat: repeat, no-repeat;
   }
 
+  /*
+   * 壁纸：台面最底下铺的那张画（Bing 每日一图，随包，运行时不联网）。
+   *
+   * 三层结构是刻意的：
+   *   图（.desk-wall-img）自己模糊 → 遮罩（.desk-wall-veil）压暗 → 其余内容盖在上面。
+   * 遮罩不分出来的话，模糊会把它一起糊了，压暗的边缘会渗出一道毛边。
+   * 图向外扩了 2 倍模糊半径：高斯模糊在边界会"吸"进透明，不扩就会露出四条空边。
+   */
+  .desk-wall {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .desk-wall-img {
+    position: absolute;
+    inset: calc(var(--wall-blur, 0px) * -2);
+    background-image: var(--wall-url);
+    background-size: cover;
+    background-position: center;
+    filter: blur(var(--wall-blur, 0px));
+  }
+  .desk-wall-veil {
+    position: absolute;
+    inset: 0;
+    background-color: var(--color-paper);
+    /* 台面的纸纹照样盖一层：壁纸是"铺在桌上的画"，画上面还是那层桌面的质感 */
+    background-image: var(--texture-grain);
+    background-size: 160px 160px;
+    opacity: var(--wall-dim, 0.62);
+  }
+  /* 换壁纸时淡入，不要"啪"一下出现 */
+  .wall-in {
+    animation: wall-in 0.4s ease-out both;
+  }
+  @keyframes wall-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* 壁纸层是 .desk 的子元素，不给内容抬一级就会被它整片盖住 */
+  .desk > *:not(.desk-wall) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /*
+   * 铺了壁纸之后，顶栏 / 底栏 / 侧栏改成毛玻璃。
+   * 它们上面都有字（文件名、路径、状态），压在照片上会读不清 ——
+   * 但也不能直接变回不透明的纸，那壁纸就只剩中间一条缝了。
+   */
+  [data-wall='1'] > header,
+  [data-wall='1'] > footer {
+    background: color-mix(in srgb, var(--color-surface) 76%, transparent);
+    backdrop-filter: blur(10px) saturate(1.08);
+  }
+  @media (min-width: 48rem) {
+    [data-wall='1'] > div > aside {
+      background: color-mix(in srgb, var(--color-paper) 52%, transparent);
+      backdrop-filter: blur(8px) saturate(1.05);
+    }
+  }
+
+  /* 设置面板里的滑块：原生 range 的默认样式在各浏览器下长得都不一样，自己画一遍 */
+  .slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-surface-3);
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-accent);
+    box-shadow: var(--shadow-xs);
+  }
+  .slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-surface-3);
+  }
+  .slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-accent);
+  }
+
   /* 纸面：真正写字的那张纸。四周一圈 hairline + 一层摊开的落影 */
   .sheet {
     background-color: var(--color-surface);

@@ -78,7 +78,9 @@ if (!existsSync(join(ROOT, 'dist/assets'))) {
   ok('dist/assets 存在（没构建就先跑 scripts/build.mjs）', false);
 } else {
   const idx = readFileSync(join(ROOT, 'dist/index.html'), 'utf8');
-  const entryRefs = [...idx.matchAll(/(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map((m) => m[1]);
+  // 只数 <script src>：rolldown 会给入口再配一个 <link rel=modulepreload> 的
+  // runtime 垫片（约 1KB），那是构建器的运行时，不是"第二个入口脚本" —— 别把它数进去。
+  const entryRefs = [...idx.matchAll(/<script[^>]+src="(\/assets\/[^"]+\.js)"/g)].map((m) => m[1]);
   ok('index.html 只引一个入口 js', entryRefs.length === 1, `引了 ${entryRefs.length} 个`);
 
   const entryName = entryRefs[0]?.replace('/assets/', '');
