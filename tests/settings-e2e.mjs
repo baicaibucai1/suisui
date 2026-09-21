@@ -79,11 +79,39 @@ ok('台面 data-wall=0', (await wallAttr()) === '0', String(await wallAttr()));
 ok('--wall-url 是空的', (await cssVar('--wall-url')) === '');
 ok('没有壁纸层节点', (await page.locator('.desk-wall').count()) === 0);
 
+/*
+ * 入口位置：设置和同步都在**左下角那条 dock** 里，不在顶栏。
+ * 顶栏只说状况（仓库、差异胶囊），动手的按钮沉到左下角 ——
+ * 这边守着，免得哪天有人图省事又把齿轮塞回顶栏去。
+ */
+step('入口在左下角');
+{
+  ok('顶栏里没有齿轮了', (await page.locator('header [data-settings]').count()) === 0);
+  ok('顶栏里也没有同步按钮了', (await page.locator('header [data-sync]').count()) === 0);
+
+  const aside = await page.locator('[data-drawer]').boundingBox();
+  const dock = await page.locator('[data-dock]').boundingBox();
+  ok('dock 贴着左边缘', !!dock && Math.abs(dock.x - aside.x) < 1, JSON.stringify(dock));
+  ok(
+    'dock 在这一列的最底部',
+    !!dock && Math.abs(dock.y + dock.height - (aside.y + aside.height)) < 1.5,
+    `dock底=${dock ? dock.y + dock.height : '?'} aside底=${aside.y + aside.height}`,
+  );
+
+  const sync = await page.locator('[data-sync]').boundingBox();
+  const gear = await page.locator('[data-settings]').boundingBox();
+  ok('同步和齿轮同一行', Math.abs(sync.y - gear.y) < 2, `${sync.y} / ${gear.y}`);
+  ok('齿轮在最右、同步占剩下的宽度', gear.x > sync.x && sync.x + sync.width > 200, JSON.stringify({ sync, gear }));
+  await page.screenshot({ path: `${OUT}/08-左下角-dock.png` });
+}
+
 step('打开设置面板');
 await page.click('[data-settings]');
 await page.waitForSelector('[data-settings-panel]', { timeout: 5000 });
 ok('面板出来了', await page.isVisible('[data-settings-panel]'));
 ok('面板里有「台面」分区', (await page.textContent('[data-settings-panel]')).includes('台面壁纸'));
+const panelX = await page.locator('[data-settings-panel]').boundingBox();
+ok('面板从左边出来（跟左下角的入口同一侧）', !!panelX && panelX.x < 2, JSON.stringify(panelX));
 
 step('同步：后端不放假按钮');
 ok('三个后端都列出来了', (await page.locator('[data-provider]').count()) === 3);
@@ -97,6 +125,32 @@ ok('网页版把坚果云的限制说清楚了', (await page.textContent('[data-
 ok('坚果云的凭据框在（先填着，桌面端能用）', await page.isVisible('[data-dav-user]'));
 // 切回去：provider 是持久化的，留在坚果云上会让后面的用例连错地方
 await page.click('[data-provider="github"]');
+
+step('凭据：跟着后端走，搬出顶栏');
+{
+  ok(
+    '凭据框在面板里（不再挂在顶栏那颗钥匙上）',
+    await page.isVisible('[data-settings-panel] [data-token]'),
+  );
+  ok('凭据框是密码框', (await page.getAttribute('[data-token]', 'type')) === 'password');
+  /*
+   * 红点从顶栏那颗钥匙挪到了齿轮上：没配凭据就一直在。
+   * ⚠️ dev 环境常常由 .env.local 自带 VITE_GH_TOKEN，所以"初始有红点"不成立 ——
+   * 判据只能是"清掉 token 就出现、填上就消失"这个方向上的关系。
+   */
+  const realToken = await page.inputValue('[data-token]');
+  await page.locator('[data-token]').fill('');
+  await page.waitForTimeout(200);
+  ok('没配凭据时齿轮上顶着红点', (await page.locator('[data-cred-dot]').count()) === 1);
+  await page.locator('[data-token]').fill('ghp_d_e2e_only');
+  await page.waitForTimeout(200);
+  ok('配上之后红点消失', (await page.locator('[data-cred-dot]').count()) === 0);
+  ok('面板里还有一颗「立即同步」', await page.isVisible('[data-sync-now]'));
+  // 还原，而且必须还原到原来那个：后面还有 reload 的用例，留一个假 token
+  // 会让页面一进来就自动比对，蹭蹭吃三个 401（控制台零报错那条就要红了）
+  await page.locator('[data-token]').fill(realToken);
+  await page.waitForTimeout(200);
+}
 
 const tiles = page.locator('[data-wall-item]');
 const n = await tiles.count();
@@ -160,10 +214,16 @@ step('手机上：面板铺满宽度');
 await page.setViewportSize({ width: 390, height: 844 });
 await page.reload({ waitUntil: 'domcontentloaded' });
 await page.waitForSelector('[data-settings]');
+// 手机上入口在**抽屉**里（这一列整体变成了从左侧推入的浮层）：
+// 得先把抽屉拉出来，够得着左下角那个齿轮。
+await page.click('[data-drawer-toggle]');
+await page.waitForTimeout(400);
+ok('齿轮也跟着抽屉进来了', await page.isVisible('[data-settings]'));
 await page.click('[data-settings]');
 await page.waitForSelector('[data-settings-panel]');
 const box = await page.locator('[data-settings-panel]').boundingBox();
 ok('面板占满窄屏', !!box && box.width >= 380, box ? String(box.width) : 'no box');
+ok('面板从左边出来（跟入口同一侧）', !!box && box.x < 2, box ? String(box.x) : 'no box');
 await page.screenshot({ path: `${OUT}/07-设置-手机.png` });
 
 step('控制台');

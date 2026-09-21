@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import TopBar from './components/TopBar';
 import FileTree from './components/FileTree';
 import ChangeList from './components/ChangeList';
+import SideDock from './components/SideDock';
 import { EditorLoading, EmptyState } from './components/EmptyState';
 import StatusBar from './components/StatusBar';
 import { useStore } from './lib/store';
@@ -113,6 +114,12 @@ export default function App() {
         >
           <FileTree />
           <ChangeList />
+          {/*
+            左下角 dock：同步 + 设置。
+            放在这一列的最后一层 = 永远贴在左下角；手机上这一列是抽屉，
+            dock 跟着抽屉一起滑进来，同步就在手指够得着的地方。
+          */}
+          <SideDock />
         </aside>
         <main className="min-w-0 flex-1">
           {/*

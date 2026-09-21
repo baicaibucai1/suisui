@@ -1,20 +1,20 @@
-import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { BRANCH, OWNER, REPO, useStore } from '../lib/store';
-import { Alert, ArrowDown, ArrowUp, Branch, Check, Gear, Key, Menu, Refresh } from './icons';
+import { Alert, ArrowDown, ArrowUp, Branch, Check, Menu, Refresh } from './icons';
 
 /*
  * 顶栏 = 这一页的"抬头"。
  *
- * 一条规则：**从左到右，信息由稳到变**。
+ * 一条规则：**顶栏只说清楚现在是什么状况，不动手改状况**。
  *   左边（印 + 名字 + 仓库坐标）是这一路都不变的东西；
- *   中间（差异胶囊）是每次比对都会变的；
- *   右边（刷新 / 同步 / 凭据）是会改变上面两样的动作。
- * 所以同步按钮是全页唯一一颗实心主按钮 —— 它能改的东西最多。
- * 别再往顶栏塞第二颗实心按钮，一页里两颗"最重要"等于没有最重要。
+ *   右边那排胶囊是每次比对都会变的；
+ *   唯一留下的动作是「刷新差异」—— 它更新的是紧挨着它的那排胶囊，
+ *   挪到别处就成了"按钮在一边，它改的东西在另一边"。
+ * 真正会改变数据的按钮（同步）沉到了左下角的 dock 里，连同设置和凭据一起：
+ * 改完一堆文件，手往下就是同步，不用跑到屏幕另一头。
  */
 
-/** 次级动作（刷新差异 / 凭据）：有边框的浅底按钮，悬停时纸面上浮一档 */
+/** 顶栏唯一的动作（刷新差异）：有边框的浅底按钮，悬停时纸面上浮一档 */
 const GHOST =
   'inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-line bg-surface px-2.5 text-[12.5px] text-ink-2 shadow-xs transition-[background-color,color,box-shadow] duration-150 hover:bg-surface-2 hover:text-ink hover:shadow-sm disabled:opacity-40 disabled:pointer-events-none max-md:h-9 max-md:w-9 max-md:justify-center max-md:px-0';
 
@@ -44,8 +44,6 @@ function Chip({
 }
 
 export default function TopBar() {
-  const token = useStore((s) => s.token);
-  const setToken = useStore((s) => s.setToken);
   const busy = useStore((s) => s.busy);
   const changes = useStore((s) => s.changes);
   const refreshPlan = useStore((s) => s.refreshPlan);
@@ -55,14 +53,6 @@ export default function TopBar() {
   const planStale = useStore((s) => s.planStale);
   const drawer = useStore((s) => s.drawer);
   const setDrawer = useStore((s) => s.setDrawer);
-  const settings = useStore((s) => s.settings);
-  const setSettings = useStore((s) => s.setSettings);
-  const [showToken, setShowToken] = useState(false);
-
-  // 设置面板一开，凭据那个小浮层就收起来：它俩都挂在顶栏右侧，叠在一起谁也看不清
-  useEffect(() => {
-    if (settings) setShowToken(false);
-  }, [settings]);
 
   const push = changes.filter((c) => c.kind.startsWith('push')).length;
   const pull = changes.filter((c) => c.kind.startsWith('pull')).length;
@@ -150,53 +140,13 @@ export default function TopBar() {
             <Refresh size={13.5} className={busy === 'plan' ? 'animate-spin' : ''} />
             <span className="max-md:hidden">{busy === 'plan' ? '比对中' : '刷新差异'}</span>
           </button>
-
-          <button
-            data-sync
-            onClick={() => void doSync()}
-            disabled={busy !== null}
-            title="同步"
-            className="btn-primary inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-accent px-3.5 text-[12.5px] font-medium text-white transition-[box-shadow,opacity] duration-150 hover:brightness-[1.06] disabled:opacity-40 disabled:pointer-events-none max-md:h-9 max-md:w-9 max-md:justify-center max-md:px-0"
-          >
-            <Refresh size={13.5} className={busy === 'sync' ? 'animate-spin' : ''} />
-            <span className="max-md:hidden">{busy === 'sync' ? '同步中' : '同步'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowToken((v) => !v)}
-            aria-expanded={showToken}
-            className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border transition-colors duration-150 max-md:h-9 max-md:w-9 ${
-              showToken
-                ? 'border-line-2 bg-surface-2 text-ink'
-                : 'border-transparent text-ink-3 hover:bg-surface-2 hover:text-ink-2'
-            }`}
-            title={token ? '凭据已配置' : '还没配置 token'}
-          >
-            <Key size={14} />
-            {/* 没配凭据时按钮上顶一颗小红点 —— 比在顶栏写一行字省地方，也比什么都不说清楚 */}
-            {!token && (
-              <span className="pointer-events-none absolute right-[5px] top-[5px] h-1.5 w-1.5 rounded-full bg-danger ring-2 ring-surface" />
-            )}
-          </button>
-
-          <button
-            data-settings
-            onClick={() => setSettings(!settings)}
-            aria-expanded={settings}
-            aria-label="设置"
-            title="设置"
-            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border transition-colors duration-150 max-md:h-9 max-md:w-9 ${
-              settings
-                ? 'border-line-2 bg-surface-2 text-ink'
-                : 'border-transparent text-ink-3 hover:bg-surface-2 hover:text-ink-2'
-            }`}
-          >
-            <Gear size={14} />
-          </button>
         </div>
       </div>
 
-      {/* 删远端不可逆：默认只拉不删，把清单摆出来等人点头 */}
+      {/*
+        删远端不可逆：默认只拉不删，把清单摆出来等人点头。
+        横幅留在顶栏 —— 同步是从左下角触发的，但"这一步会删远端"要占最显眼的一条位置。
+      */}
       {pendingDeletes && (
         <div
           data-delete-confirm
@@ -225,33 +175,6 @@ export default function TopBar() {
         </div>
       )}
 
-      {showToken && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setShowToken(false)} />
-          <div className="absolute right-4 top-[58px] z-40 w-[430px] overflow-hidden rounded-pop border border-line bg-surface shadow-pop">
-            <div className="flex items-baseline justify-between border-b border-line bg-surface-2 px-4 py-2.5">
-              <span className="font-serif text-[12.5px] font-semibold tracking-[0.08em]">
-                访问凭据
-              </span>
-              <span className="font-mono text-[10.5px] text-ink-3">{OWNER}/{REPO}</span>
-            </div>
-            <div className="p-3.5">
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="ghp_… / github_pat_…"
-                className="w-full rounded-[8px] border border-line bg-surface-2 px-2.5 py-[7px] font-mono text-[12px] text-ink transition-colors outline-none placeholder:text-ink-3 focus:border-accent focus:bg-surface"
-              />
-              <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-3">
-                需要 fine-grained PAT，权限只给 {OWNER}/{REPO} 的 Contents 读写。
-                <br />
-                demo 阶段存在本机 localStorage，正式版会进系统凭据库。
-              </p>
-            </div>
-          </div>
-        </>
-      )}
     </header>
   );
 }

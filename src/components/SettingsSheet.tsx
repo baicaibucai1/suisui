@@ -12,15 +12,22 @@ import {
   loadWallpaperManifest,
   type WallpaperItem,
 } from '../lib/wallpaper';
-import { Alert, Check, Close, Image } from './icons';
+import { Alert, Check, Close, Image, Refresh } from './icons';
 
 /*
- * 设置面板：从右侧推出的一张纸。
+ * 设置面板：从**左侧**推出的一张纸。
+ *
+ * 入口在左下角（同步旁边那颗齿轮），面板就得跟着它走 —— 从右边飞过来一张纸
+ * 是"另一个地方"，从左边缘长出来才是"齿轮后面那叠东西"。
  *
  * 内容按「改了之后影响多大的一片地方」排序：
- *   台面（整页背景）→ 文件列表（半页）→ 关于（只是说明）。
+ *   同步（东西存在哪儿）→ 台面（整页背景）→ 文件列表（半页）→ 关于（只是说明）。
  * 同一条设置**不在这里和别处各放一份开关** —— 两处状态同源但视觉不同步时，
  * 用户会以为自己改了没生效（文件列表那个眼睛图标是快捷方式，它俩共用同一个 store 值）。
+ *
+ * ⚠️ 每一家的凭据都跟它自己的后端放在一起：选 GitHub 才出现 token，
+ * 选坚果云才出现账号/应用密码。凭据是"连到这家"的一部分，不该单独成一节
+ * 让人先决定"我要配什么"，再决定"我配的是给谁的"。
  *
  * ⚠️ 壁纸列表是**从包里读 manifest**，不是联网抓（理由见 lib/wallpaper.ts 的注释）：
  * 包里没抓过壁纸是正常的初始状态，那只是「列表为空」，不能当错误弹红字。
@@ -44,6 +51,12 @@ export default function SettingsSheet() {
   const setDav = useStore((s) => s.setDav);
   const od = useStore((s) => s.od);
   const setOd = useStore((s) => s.setOd);
+  const token = useStore((s) => s.token);
+  const setToken = useStore((s) => s.setToken);
+  const busy = useStore((s) => s.busy);
+  const doSync = useStore((s) => s.doSync);
+  const lastSyncAt = useStore((s) => s.lastSyncAt);
+  const changes = useStore((s) => s.changes);
 
   const [items, setItems] = useState<WallpaperItem[]>(cache?.items ?? []);
   const [fetchedAt, setFetchedAt] = useState(cache?.fetchedAt ?? '');
@@ -95,7 +108,7 @@ export default function SettingsSheet() {
       />
       <aside
         data-settings-panel
-        className="fixed right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-line bg-surface shadow-pop max-md:w-full"
+        className="sheet-in fixed left-0 top-0 z-50 flex h-full w-[400px] flex-col border-r border-line bg-surface shadow-pop max-md:w-full"
       >
         <div className="flex shrink-0 items-baseline justify-between border-b border-line bg-surface-2 px-4 py-3">
           <span className="font-serif text-[13.5px] font-semibold tracking-[0.1em]">设置</span>
@@ -138,11 +151,25 @@ export default function SettingsSheet() {
             </div>
 
             {provider === 'github' && (
-              <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">
-                用 <span className="font-mono">{OWNER}/{REPO}</span> 这个仓库当库，分支{' '}
-                <span className="font-mono">{BRANCH}</span>。
-                访问凭据在顶栏那颗钥匙里配。
-              </p>
+              <div className="mt-2.5 space-y-1.5">
+                {/* 凭据跟着后端走：选了 GitHub，这里就是 GitHub 的 token */}
+                <input
+                  data-token
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="ghp_… / github_pat_…"
+                  className="w-full rounded-[8px] border border-line bg-surface-2 px-2.5 py-[6px] font-mono text-[11.5px] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-surface"
+                />
+                <p className="text-[11px] leading-relaxed text-ink-3">
+                  需要 fine-grained PAT，权限只给{' '}
+                  <span className="font-mono">
+                    {OWNER}/{REPO}
+                  </span>{' '}
+                  的 Contents 读写，分支 <span className="font-mono">{BRANCH}</span>。
+                  demo 阶段存在本机 localStorage，正式版会进系统凭据库。
+                </p>
+              </div>
             )}
 
             {provider === 'nutstore' && (
@@ -214,10 +241,28 @@ export default function SettingsSheet() {
               </div>
             )}
 
+            {/*
+              配完就地同步：选后端 → 填凭据 → 同步，三步都在这一屏里，
+              不用关掉面板再去找按钮（那个按钮在左下角 dock 上，刻意的，两边都能到）。
+            */}
+            <div className="mt-3 flex items-center gap-2 border-t border-line pt-2.5">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-ink-3">
+                {lastSyncAt ? `上次同步 ${lastSyncAt}` : '还没同步过'}
+                {changes.length > 0 && ` · ${changes.length} 项差异待处理`}
+              </span>
+              <button
+                data-sync-now
+                onClick={() => void doSync()}
+                disabled={busy !== null}
+                className="inline-flex shrink-0 items-center gap-1 rounded-[8px] border border-line bg-surface-2 px-2 py-[4px] text-[11.5px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Refresh size={11.5} className={busy === 'sync' ? 'animate-spin' : ''} />
+                {busy === 'sync' ? '同步中' : '立即同步'}
+              </button>
+            </div>
+
             {meta && (
-              <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">
-                {meta.hint}
-              </p>
+              <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">{meta.hint}</p>
             )}
           </Section>
 

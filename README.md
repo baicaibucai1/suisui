@@ -54,7 +54,8 @@ VITE_GH_REPO=ramblings
 VITE_GH_BRANCH=main
 ```
 
-界面右上角的钥匙图标可临时覆盖（demo 存 localStorage，正式版进系统凭据库）。
+凭据在**设置面板的「同步」分区**里配（设置入口在左下角 dock 的齿轮上；
+没配凭据时齿轮顶一颗红点）。demo 存 localStorage，正式版进系统凭据库。
 ⚠️ 凭据按「地址 + 端口」隔离 —— 电脑上填过不代表手机上填过，换设备要重填一次。
 
 ## 已实现
@@ -176,7 +177,7 @@ node tests/davxml.test.mjs        # WebDAV 的 PROPFIND 解析 15 例（编码 /
 node tests/folder-e2e.mjs         # 浏览器：建多层文件夹 → 空目录看得见 → 往里写笔记 → 删（含确认）
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
 node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
-node tests/settings-e2e.mjs       # 设置面板 + 壁纸 26 例（默认关 / 图真的下下来了 / 刷新还在 / Esc / 手机全宽）
+node tests/settings-e2e.mjs       # 设置面板 + 壁纸 46 例（入口在左下角 / 凭据跟着后端走 / 图真的下下来了 / 刷新还在 / Esc / 手机全宽）
 node tests/mobile-e2e.mjs         # 手机视口 57 例（抽屉 / 工具栏横滚 / 触摸尺寸 / 顶栏精简 / 手机壳页 / 桌面不回归）
 node tests/pwa-e2e.mjs            # 产物上的 PWA 15 例（SW 注册 → 断开网络仍能打开）
 node tests/lazy-e2e.mjs           # 编辑器按需加载 21 例（入口包里没有编辑器 / 首屏不拉 / 加载中给骨架）
@@ -324,7 +325,7 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/components/RichToolbar.tsx` | 稿纸的 25 个工具 + 色板 / 字号字体弹层 |
 | `src/components/EditorShell.tsx` | 编辑器外壳（台面 → 纸面 → 路径栏 / 模式开关 / 面包屑）。md 与稿纸共用，**必须留在主包里** |
 | `src/components/EmptyState.tsx` | 编辑区的两种"还没有编辑器"状态（空态 / 加载骨架）。**必须在主包里** —— 见「已实现」里的按需加载 |
-| `src/components/` | 顶栏（含移动端抽屉开关） / 文件树（含「创建笔记」） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
+| `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（同步 + 设置）** / 文件树（含「创建笔记」） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
 | `src/main.tsx` | 入口。DEV 下把 store 挂到 `window.__suisui`；**只在 PROD 注册 Service Worker** |
 | `public/manifest.webmanifest` | PWA 清单（standalone / 图标 / 语言） |
 | `public/sw.js` | 离线外壳：导航 network-first，静态资源 SWR，跨域一律放行 |
@@ -366,6 +367,7 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-rich-mode` / `data-rich-preset` / `data-rich-css` / `data-rich-css-panel` / `data-rich-doc`
   / `data-rich-source` / `data-rich-style`
   / `data-drawer` / `data-drawer-toggle` / `data-drawer-mask`
+  / `data-dock` / `data-sync-count` / `data-cred-dot` / `data-sync-now` / `data-token`
   / `data-settings` / `data-settings-panel` / `data-settings-mask` / `data-settings-close` / `data-toggle="showall"`
   / `data-provider="<后端>"` / `data-dav-url` / `data-dav-user` / `data-dav-pass` / `data-dav-warn` / `data-od-token` / `data-od-base`
   / `data-new-folder` / `data-folder-name` / `data-folder-submit` / `data-dir="<目录>"` / `data-dir-del="<目录>"`

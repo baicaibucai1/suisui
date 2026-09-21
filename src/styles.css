@@ -197,6 +197,24 @@ body {
     }
   }
 
+  /*
+   * 设置面板：从左边缘推出来的一张纸。
+   * 它的入口（齿轮）在左下角 dock 上，所以面板跟着左边缘走 —— 从右边飞来的是"别的地方"。
+   */
+  .sheet-in {
+    animation: sheet-in 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  @keyframes sheet-in {
+    from {
+      transform: translateX(-16px);
+      opacity: 0.3;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
   /* 壁纸层是 .desk 的子元素，不给内容抬一级就会被它整片盖住 */
   .desk > *:not(.desk-wall) {
     position: relative;
@@ -695,6 +713,7 @@ body {
   [data-drawer-toggle],
   [data-refresh],
   [data-sync],
+  [data-settings],
   [data-toggle-all],
   [data-new],
   [data-new-note] {
