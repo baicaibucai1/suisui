@@ -1,0 +1,498 @@
+@import 'tailwindcss';
+
+/*
+ * 设计令牌 —— 暖纸 + 墨。侧栏用 paper（略深），主区用 surface（近白），靠明度而不是边框分层。
+ * 组件里只用语义名，不许写裸 hex。
+ */
+@theme {
+  --color-paper: #f5f3ef;
+  --color-surface: #fffefd;
+  --color-surface-2: #f2efeb;
+  --color-surface-3: #e8e4de;
+  --color-line: #e7e2db;
+  --color-line-2: #d9d3ca;
+
+  --color-ink: #221f1c;
+  --color-ink-2: #6e6760;
+  --color-ink-3: #a39c94;
+
+  --color-accent: #3d5d7d;
+  --color-accent-2: #33506e;
+  --color-accent-soft: #eaeff5;
+
+  --color-ok: #4a7a5c;
+  --color-ok-soft: #ebf2ed;
+  --color-ok-line: #d1e0d6;
+
+  --color-warn: #96682a;
+  --color-warn-soft: #fbf4e7;
+  --color-warn-line: #eaddc2;
+
+  --color-danger: #ac4a3e;
+  --color-danger-soft: #fbedeb;
+  --color-danger-line: #eed3ce;
+
+  --radius-panel: 10px;
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'Microsoft YaHei',
+    sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'SFMono-Regular', 'Courier New', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #d8e3ee;
+}
+
+/* 细滚动条：静止时几乎看不见，悬停才浮出来 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cbc4ba;
+  background-clip: content-box;
+}
+
+/* ---------- 编辑器（Milkdown / Crepe 主题变量映射） ---------- */
+
+.editor-sheet {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3.25rem 1.5rem 8rem;
+}
+
+.milkdown-wrap {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--color-ink);
+  --crepe-color-surface: var(--color-surface-2);
+  --crepe-color-surface-low: var(--color-surface-2);
+  --crepe-color-on-surface: var(--color-ink);
+  --crepe-color-on-surface-variant: var(--color-ink-2);
+  --crepe-color-outline: var(--color-line-2);
+  --crepe-color-primary: var(--color-accent);
+  --crepe-color-secondary: var(--color-accent-soft);
+  --crepe-color-on-secondary: var(--color-accent-2);
+  --crepe-color-inverse: var(--color-ink);
+  --crepe-color-on-inverse: #fffefd;
+  --crepe-color-inline-code: var(--color-danger);
+  --crepe-color-error: var(--color-danger);
+  --crepe-color-hover: var(--color-surface-2);
+  --crepe-color-selected: var(--color-surface-3);
+  --crepe-color-inline-area: var(--color-surface-3);
+  --crepe-base-font-size: 15.5px;
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-code: var(--font-mono);
+}
+
+.milkdown-wrap .milkdown {
+  background: transparent;
+  box-shadow: none;
+}
+
+.milkdown-wrap .milkdown .ProseMirror {
+  padding: 0;
+  line-height: 1.85;
+  caret-color: var(--color-accent);
+}
+
+.milkdown-wrap .milkdown .ProseMirror:focus,
+.milkdown-wrap .milkdown .ProseMirror:focus-visible {
+  outline: none;
+}
+
+.milkdown-wrap .milkdown .ProseMirror > * + * {
+  margin-top: 0.9em;
+}
+
+.milkdown-wrap .milkdown .ProseMirror h1,
+.milkdown-wrap .milkdown .ProseMirror h2,
+.milkdown-wrap .milkdown .ProseMirror h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.milkdown-wrap .milkdown .ProseMirror h1 {
+  font-size: 1.7em;
+  margin-top: 1.6em;
+}
+
+.milkdown-wrap .milkdown .ProseMirror h2 {
+  font-size: 1.28em;
+  margin-top: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.milkdown-wrap .milkdown .ProseMirror h3 {
+  font-size: 1.06em;
+  margin-top: 1.3em;
+}
+
+.milkdown-wrap .milkdown .ProseMirror p {
+  text-wrap: pretty;
+}
+
+.milkdown-wrap .milkdown .ProseMirror blockquote {
+  border-left: 2px solid var(--color-line-2);
+  padding-left: 1.1em;
+  color: var(--color-ink-2);
+  font-style: normal;
+}
+
+.milkdown-wrap .milkdown .ProseMirror code {
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.milkdown-wrap .milkdown .ProseMirror pre {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-panel);
+}
+
+.milkdown-wrap .milkdown .ProseMirror pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.milkdown-wrap .milkdown .ProseMirror table {
+  font-size: 0.94em;
+}
+
+.milkdown-wrap .milkdown .ProseMirror th {
+  background: var(--color-surface-2);
+  font-weight: 600;
+}
+
+.milkdown-wrap .milkdown .ProseMirror a {
+  color: var(--color-accent);
+  text-decoration-color: var(--color-line-2);
+  text-underline-offset: 3px;
+}
+
+.milkdown-wrap .milkdown .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--color-line);
+}
+
+/* 源码模式的 textarea 随内容长高，让外层统一滚动（否则双层滚动条） */
+.src-editor {
+  field-sizing: content;
+}
+
+/* Crepe 的块级控件（拖拽把手 / 加号）默认偏大，收一点 */
+.milkdown-wrap .milkdown .milkdown-block-handle {
+  transform: scale(0.9);
+}
+
+/* ---------- 稿纸（.rich）的默认排版 ---------- */
+
+/*
+ * ⚠️ 整块必须在 @layer base 里，这不是洁癖。
+ *
+ * 用户的样式是 `@scope (.rich-scope) { h1 { … } }`。按 CSS Cascade 6，
+ * **@scope 不给里面的选择器加特异性**，用户的 `h1` 就是 (0,0,1)；
+ * 而这里若裸写 `.rich-scope h1` 就是 (0,1,1) —— 用户除非写 !important，
+ * 否则永远改不动标题颜色，「这篇的 CSS」就成了摆设。
+ *
+ * 放进图层后，**未分层的样式一律压过分层的**，用户怎么写都赢。
+ * 换句话说：想给稿纸加默认样式，加在这里；想让它可被覆盖，别搬出这个图层。
+ */
+@layer base {
+  .rich-scope {
+    color: var(--color-ink);
+    font-size: 15.5px;
+    line-height: 1.85;
+    caret-color: var(--color-accent);
+    overflow-wrap: break-word;
+    text-wrap: pretty;
+  }
+
+  .rich-scope:focus,
+  .rich-scope:focus-visible {
+    outline: none;
+  }
+
+  .rich-scope > * + * {
+    margin-top: 0.9em;
+  }
+
+  .rich-scope h1,
+  .rich-scope h2,
+  .rich-scope h3,
+  .rich-scope h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+  }
+
+  .rich-scope h1 {
+    font-size: 1.7em;
+    margin-top: 1.6em;
+  }
+
+  .rich-scope h2 {
+    font-size: 1.28em;
+    margin-top: 1.5em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .rich-scope h3 {
+    font-size: 1.06em;
+    margin-top: 1.3em;
+  }
+
+  .rich-scope ul,
+  .rich-scope ol {
+    padding-left: 1.6em;
+  }
+
+  .rich-scope ul {
+    list-style: disc;
+  }
+
+  .rich-scope ol {
+    list-style: decimal;
+  }
+
+  .rich-scope li + li {
+    margin-top: 0.2em;
+  }
+
+  .rich-scope blockquote {
+    border-left: 2px solid var(--color-line-2);
+    padding-left: 1.1em;
+    color: var(--color-ink-2);
+  }
+
+  .rich-scope code {
+    font-family: var(--font-mono);
+    font-size: 0.87em;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+
+  .rich-scope pre {
+    font-family: var(--font-mono);
+    font-size: 0.87em;
+    line-height: 1.7;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+    padding: 0.85em 1em;
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+
+  .rich-scope pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 1em;
+  }
+
+  .rich-scope a {
+    color: var(--color-accent);
+    text-decoration-color: var(--color-line-2);
+    text-underline-offset: 3px;
+  }
+
+  .rich-scope hr {
+    border: none;
+    border-top: 1px solid var(--color-line);
+    margin: 1.6em 0;
+  }
+
+  .rich-scope img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+  }
+
+  .rich-scope table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94em;
+  }
+
+  .rich-scope th,
+  .rich-scope td {
+    border: 1px solid var(--color-line);
+    padding: 0.45em 0.7em;
+    text-align: left;
+  }
+
+  .rich-scope th {
+    background: var(--color-surface-2);
+    font-weight: 600;
+  }
+
+  /* contenteditable 里空段落靠 <br> 撑高，别让它塌成 0 */
+  .rich-scope p:empty::before,
+  .rich-scope p > br:only-child {
+    content: '';
+    display: inline-block;
+  }
+}
+
+/* ============================ 移动端（< 48rem） ============================
+ *
+ * 这里只放**会改变定位 / 滚动行为**的规则；间距字号这类微调就地写在组件的
+ * max-md: 变体里，那样离用它的地方更近。分界理由：定位类的规则散在 JSX 里
+ * 就没法一眼看出整体布局怎么变，而间距散着看反而更清楚。
+ *
+ * 断点用 48rem 跟 Tailwind 的 md 对齐 —— 不要写成 768px，两套标准迟早对不上。
+ * 钩子一律用 data-*，和 e2e 用的是同一批，不额外发明类名。
+ * ========================================================================= */
+
+/* 手机浏览器地址栏收放会改变 vh；dvh 跟着实际可视高度走，软键盘弹起时
+   正文才不会被盖住（配合 index.html 的 interactive-widget=resizes-content） */
+@supports (height: 100dvh) {
+  #root {
+    height: 100dvh;
+  }
+}
+
+@media (width < 48rem) {
+  /* 整页下拉刷新会把没落盘的编辑冲掉，索性关掉 */
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* 桌面那套 hover 在触摸屏上会「粘住」上一次点的元素，用点击高亮代替 */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* --- 侧栏：常驻列 → 从左侧推入的抽屉。同一个节点，只改定位 --- */
+  [data-drawer] {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    /*
+     * 宽度别贪。412px 的屏上取 292（约 71%），右边留 120px 左右的遮罩 ——
+     * 太宽的话「点空白处收起」只剩一条缝，手指按不准，只能去够按钮。
+     */
+    width: min(80vw, 292px);
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 10px 34px rgba(34, 31, 28, 0.2);
+  }
+
+  [data-drawer][data-open='1'] {
+    transform: translateX(0);
+  }
+
+  /* --- 工具栏：换行会把正文整块挤下去，改成横滚 --- */
+  [data-md-toolbar],
+  [data-rich-toolbar] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-left: 12px;
+    padding-right: 12px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 手机上不显示横滚条（会盖住按钮下沿） */
+  [data-md-toolbar]::-webkit-scrollbar,
+  [data-rich-toolbar]::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* --- 触摸目标：28px 是鼠标尺寸，手指按不准 --- */
+  [data-md-toolbar] button,
+  [data-rich-toolbar] button,
+  [data-drawer-toggle],
+  [data-refresh],
+  [data-sync],
+  [data-toggle-all],
+  [data-new],
+  [data-new-note] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  /* 文件行也加高，一是好点，二是让每行都能稳稳落在指腹下 */
+  [data-file] {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  /* --- 弹层：桌面上是居中的小浮层，手机上居中就有一半在屏幕外 --- */
+  [data-rich-pop],
+  [data-md-link-pop] {
+    left: 12px;
+    right: 12px;
+    /*
+     * ⚠️ 必须同时写 translate 和 transform。
+     * Tailwind v4 的 `-translate-x-1/2` 生成的是 **translate 属性**
+     * （--tw-translate-x + `translate: …`），不是 `transform: translateX(…)`。
+     * 只写 transform: none 压不住它，弹层照样往左偏半个屏 —— 而且不报错。
+     */
+    translate: none;
+    transform: none;
+    max-height: 52vh;
+    overflow-y: auto;
+  }
+
+  /* 弹层里的链接输入框原本固定 16rem 宽，贴边后要能自己缩 */
+  [data-rich-link-input],
+  [data-md-link-input] {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* --- 正文留白：左右各 24px 在手机上太奢侈 --- */
+  .editor-sheet {
+    padding: 1.5rem 1.15rem 6rem;
+  }
+
+  /* --- 底部安全区（手势条 / 圆角屏） --- */
+  .status-bar {
+    height: auto;
+    min-height: 30px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+

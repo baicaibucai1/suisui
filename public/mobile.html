@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>碎碎 · 手机预览</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <style>
+      /*
+        手机壳预览页 —— 把应用放进真机尺寸的 iframe 里。
+        关键点：iframe 有自己的视口，所以 @media (max-width: 768px) 是按【壳的宽度】求值的，
+        里面渲染出的就是真手机布局，不是把桌面版缩小。
+        这个文件是开发/演示用的，不参与应用逻辑。地址栏参数：?url=…&w=…&h=…
+      */
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        background: #f5f3ef;
+        color: #221f1c;
+        font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'Microsoft YaHei',
+          sans-serif;
+        font-size: 13px;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+
+      /* --- 控制条 --- */
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+        padding: 9px 12px;
+        border-bottom: 1px solid #e7e2db;
+        background: #fffefd;
+      }
+      .group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .sep {
+        width: 1px;
+        height: 18px;
+        margin: 0 2px;
+        background: #e7e2db;
+      }
+      .chip,
+      .act {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 28px;
+        padding: 0 9px;
+        border: 1px solid #e7e2db;
+        border-radius: 6px;
+        background: #f2efeb;
+        color: #6e6760;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+      }
+      .chip:hover,
+      .act:hover {
+        background: #e8e4de;
+        color: #221f1c;
+      }
+      .chip[aria-pressed='true'] {
+        border-color: #3d5d7d;
+        background: #eaeff5;
+        color: #3d5d7d;
+        font-weight: 600;
+      }
+      .act:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .act.primary {
+        border-color: transparent;
+        background: #3d5d7d;
+        color: #fffefd;
+        font-weight: 500;
+      }
+      .act.primary:hover {
+        background: #33506e;
+        color: #fffefd;
+      }
+      .slider {
+        width: 92px;
+        accent-color: #3d5d7d;
+      }
+      .title {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        margin-right: 2px;
+      }
+      .title b {
+        font-size: 13.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+      }
+      .title span {
+        font-family: 'Cascadia Mono', Consolas, monospace;
+        font-size: 10.5px;
+        color: #a39c94;
+      }
+
+      /* --- 舞台 --- */
+      main {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        place-items: center;
+        overflow: auto;
+        padding: 16px;
+      }
+      #slot {
+        position: relative;
+        flex-shrink: 0;
+      }
+      #device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: top left;
+        padding: 9px;
+        border-radius: 36px;
+        background: #221f1c;
+        box-shadow: 0 16px 44px rgba(34, 31, 28, 0.26), 0 2px 6px rgba(34, 31, 28, 0.14);
+      }
+      #device.tablet {
+        padding: 11px;
+        border-radius: 22px;
+      }
+      #device.laptop {
+        padding: 8px 8px 14px;
+        border-radius: 12px;
+      }
+      #screen {
+        position: relative;
+        display: block;
+        border: 0;
+        border-radius: 28px;
+        background: #fffefd;
+      }
+      #device.tablet #screen {
+        border-radius: 13px;
+      }
+      #device.laptop #screen {
+        border-radius: 5px;
+      }
+      /* 刘海：只在手机上画，纯装饰 */
+      #notch {
+        position: absolute;
+        top: 9px;
+        left: 50%;
+        z-index: 2;
+        width: 78px;
+        height: 20px;
+        transform: translateX(-50%);
+        border-radius: 0 0 11px 11px;
+        background: #221f1c;
+        pointer-events: none;
+      }
+      #device.tablet #notch,
+      #device.laptop #notch {
+        display: none;
+      }
+
+      /* --- 脚注 --- */
+      footer {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 12px;
+        border-top: 1px solid #e7e2db;
+        background: #fffefd;
+        font-size: 11.5px;
+        color: #a39c94;
+      }
+      footer code {
+        font-family: 'Cascadia Mono', Consolas, monospace;
+        color: #6e6760;
+      }
+      .warn {
+        color: #96682a;
+      }
+      .grow {
+        flex: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="title"><b>碎碎</b><span>手机预览</span></div>
+      <div class="group" id="presets"></div>
+      <div class="sep"></div>
+      <div class="group">
+        <button class="act" id="rotate" title="交换宽高（横屏）">旋转</button>
+        <label class="act" style="cursor: default">
+          缩放
+          <input class="slider" id="scale" type="range" min="25" max="130" value="90" />
+          <span id="scaleVal" style="font-variant-numeric: tabular-nums; width: 34px">90%</span>
+        </label>
+        <button class="act" id="fit" aria-pressed="true" title="按窗口高度自动缩放">自动</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button class="act" id="reload">重载</button>
+        <button class="act" id="hard" title="注销 Service Worker 并清空缓存后重载">清缓存重载</button>
+        <button class="act primary" id="blank">新标签打开</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="slot">
+        <div id="device">
+          <div id="notch"></div>
+          <iframe id="screen" title="碎碎（手机视口）"></iframe>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span id="meta"></span>
+      <span class="grow"></span>
+      <span class="warn">iframe 没有触摸模拟</span>
+      <span>要测真触摸 / 软键盘，手机开 <code id="lan"></code></span>
+    </footer>
+
+    <script>
+      const DEVICES = [
+        { label: 'Pixel 7', w: 412, h: 915, dpr: 2.625, kind: 'phone' },
+        { label: 'iPhone 15 Pro', w: 393, h: 852, dpr: 3, kind: 'phone' },
+        { label: 'iPhone SE', w: 375, h: 667, dpr: 2, kind: 'phone' },
+        { label: 'Galaxy A54', w: 384, h: 854, dpr: 2.75, kind: 'phone' },
+        { label: 'iPad mini', w: 744, h: 1133, dpr: 2, kind: 'tablet' },
+        { label: '临界 767', w: 767, h: 900, dpr: 2, kind: 'tablet' },
+        { label: '临界 768', w: 768, h: 900, dpr: 2, kind: 'tablet' },
+        { label: '桌面 1280', w: 1280, h: 800, dpr: 1, kind: 'laptop' },
+      ];
+
+      const q = new URLSearchParams(location.search);
+      const url = q.get('url') || './';
+
+      const $ = (id) => document.getElementById(id);
+      const slot = $('slot');
+      const device = $('device');
+      const frame = $('screen');
+      const presets = $('presets');
+
+      let cur = { ...DEVICES[0] };
+      if (q.get('w')) cur.w = Number(q.get('w'));
+      if (q.get('h')) cur.h = Number(q.get('h'));
+      let rotated = false;
+      let auto = true;
+      let manual = 0.9;
+      let curKey = '';
+
+      /* --- 机型按钮 --- */
+      DEVICES.forEach((d) => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.type = 'button';
+        b.textContent = d.label;
+        b.dataset.device = d.label;
+        b.addEventListener('click', () => {
+          cur = { ...d };
+          rotated = false;
+          apply();
+        });
+        presets.appendChild(b);
+      });
+
+      function apply() {
+        const w = rotated ? cur.h : cur.w;
+        const h = rotated ? cur.w : cur.h;
+
+        frame.style.width = w + 'px';
+        frame.style.height = h + 'px';
+        device.className = cur.kind === 'phone' ? '' : cur.kind;
+
+        // 自动：既塞得进高度，也塞得进宽度
+        const availW = slot.parentElement.clientWidth - 32;
+        const availH = slot.parentElement.clientHeight - 32;
+        const s = auto
+          ? Math.min(1, availH / (h + 18), availW / (w + 18))
+          : manual;
+        frame.style.transform = `scale(${s})`;
+
+        // 用槽位占住缩放后的大小，才能正确居中 / 滚动
+        slot.style.width = (w + 18) * s + 'px';
+        slot.style.height = (h + 18) * s + 'px';
+
+        document.querySelectorAll('.chip').forEach((b) => {
+          const d = DEVICES.find((x) => x.label === b.dataset.device);
+          b.setAttribute('aria-pressed', String(d && d.w === cur.w && d.h === cur.h && !rotated));
+        });
+        $('fit').setAttribute('aria-pressed', String(auto));
+        $('scale').value = String(Math.round(s * 100));
+        $('scaleVal').textContent = Math.round(s * 100) + '%';
+        $('meta').innerHTML =
+          `视口 <code>${w}×${h}</code> · DPR <code>${cur.dpr}</code> · 缩放 <code>${Math.round(s * 100)}%</code>` +
+          ` · 断点 <code>${w <= 768 ? '≤768 → 手机布局' : '&gt;768 → 桌面布局'}</code>`;
+      }
+
+      /* --- 控件 --- */
+      $('rotate').addEventListener('click', () => {
+        rotated = !rotated;
+        apply();
+      });
+      $('scale').addEventListener('input', (e) => {
+        auto = false;
+        manual = Number(e.target.value) / 100;
+        apply();
+      });
+      $('fit').addEventListener('click', () => {
+        auto = !auto;
+        if (!auto) manual = Number($('scale').value) / 100;
+        apply();
+      });
+      $('reload').addEventListener('click', () => frame.contentWindow.location.reload());
+      $('blank').addEventListener('click', () => window.open(frame.src, '_blank'));
+
+      $('hard').addEventListener('click', async () => {
+        const btn = $('hard');
+        btn.disabled = true;
+        btn.textContent = '清理中';
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (e) {
+          /* 清缓存失败不该挡住重载 */
+        }
+        // 加个参数逼过 HTTP 缓存
+        const u = new URL(frame.src, location.href);
+        u.searchParams.set('t', Date.now());
+        frame.src = u.toString();
+        btn.disabled = false;
+        btn.textContent = '清缓存重载';
+      });
+
+      window.addEventListener('resize', apply);
+
+      /* --- 脚注里的地址：手机不能用 localhost，得换成本机的局域网 IP --- */
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      $('lan').textContent = isLocal ? location.host.replace(/^[^:]+/, '<本机局域网IP>') : location.host;
+
+      frame.src = url;
+      apply();
+      // 字体 / 布局稳下来之后再量一次，别用挂载瞬间的尺寸算缩放
+      setTimeout(apply, 120);
+    </script>
+  </body>
+</html>

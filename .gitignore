@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.dist-staging/
+.env.local
+.env.*.local
+*.log
+
+# 构建信息与测试截图都是可再生的产物，别进版本库
+# （截图每次跑 e2e 都会重写，提交了就是永远在变的 diff）
+tsconfig.tsbuildinfo
+shots/
