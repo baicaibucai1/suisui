@@ -1,26 +1,20 @@
 // 三路比对同步引擎：上次快照 / 本地文件 / 远端 sha。
-// 一次同步只产生一个 commit；冲突绝不静默丢字（远端版本另存 .conflict-日期.md 副本）。
+//
+// ⚠️ 这一层**不认任何一家云服务**：只认 providers/types.ts 里的 Remote 接口。
+// 换后端（GitHub / 坚果云 / OneDrive）不改这里一行 —— 判定表、冲突处理、删除确认
+// 这些真正会丢东西的逻辑因此只有一份，不会在三个后端里各错一次。
+// 下面那些 "一次同步只产生一个 commit" 之类的话，是按 GitHub 的语义写的：
+// 网盘没有事务（见 Remote.write 的注释），但比对与冲突规则完全一样。
 
-import {
-  blobSha,
-  createBlob,
-  createCommit,
-  createTree,
-  getHead,
-  listTree,
-  normalizeText,
-  readBlob,
-  updateRef,
-} from './gh';
-import type { GhConfig } from './gh';
+import { blobSha, normalizeText } from './gh';
 import { decide } from './decide';
 import type { Change } from './decide';
+import type { Remote, RemoteChange } from './providers/types';
 
 export type FileMap = Record<string, string>;
 export type Snapshot = Record<string, string>;
 
 export type Plan = {
-  head: { commitSha: string; treeSha: string };
   remote: Record<string, string>;
   changes: Change[];
 };
@@ -50,24 +44,23 @@ export type SyncOptions = {
   allowDelete?: boolean;
 };
 
-export async function planSync(cfg: GhConfig, files: FileMap, snapshot: Snapshot): Promise<Plan> {
-  const head = await getHead(cfg);
-  const { entries, truncated } = await listTree(cfg, head.treeSha);
-  if (truncated) throw new Error('远端文件树被截断，当前实现不支持');
+export async function planSync(remote: Remote, files: FileMap, snapshot: Snapshot): Promise<Plan> {
+  // 远端指纹和本地是同一种算法（blob sha）—— 见 providers/types.ts 里那条取舍，
+  // 三路比对才成立
+  const entries = await remote.list();
+  const remoteMap: Record<string, string> = {};
+  for (const e of entries) remoteMap[e.path] = e.sha;
 
-  const remote: Record<string, string> = {};
-  for (const e of entries) remote[e.path] = e.sha;
-
-  const paths = new Set<string>([...Object.keys(files), ...Object.keys(snapshot), ...Object.keys(remote)]);
+  const paths = new Set<string>([...Object.keys(files), ...Object.keys(snapshot), ...Object.keys(remoteMap)]);
   const changes: Change[] = [];
   for (const path of paths) {
     const localSha = path in files ? await blobSha(normalizeText(files[path] ?? '')) : undefined;
-    const kind = decide(localSha, snapshot[path], remote[path]);
+    const kind = decide(localSha, snapshot[path], remoteMap[path]);
     if (kind) changes.push({ kind, path });
   }
 
   changes.sort((a, b) => a.path.localeCompare(b.path, 'zh'));
-  return { head, remote, changes };
+  return { remote: remoteMap, changes };
 }
 
 function conflictPath(path: string, taken: Set<string>): string {
@@ -94,12 +87,12 @@ function commitMessage(paths: string[]): string {
 
 /** 执行一轮同步：先拉、后冲突留副本、最后推；结束时把快照对齐到远端真值。 */
 export async function syncOnce(
-  cfg: GhConfig,
+  remote: Remote,
   files: FileMap,
   snapshot: Snapshot,
   opts: SyncOptions = {},
 ): Promise<SyncResult> {
-  const plan = await planSync(cfg, files, snapshot);
+  const plan = await planSync(remote, files, snapshot);
   const log: string[] = [];
   const next: FileMap = { ...files };
   const stats: SyncStats = { pushed: 0, pulled: 0, removed: 0, conflicts: 0, commitSha: null };
@@ -112,9 +105,8 @@ export async function syncOnce(
 
   for (const c of plan.changes) {
     if (c.kind === 'pull-new' || c.kind === 'pull-mod') {
-      const sha = plan.remote[c.path];
-      if (!sha) continue;
-      next[c.path] = normalizeText(await readBlob(cfg, sha));
+      if (!(c.path in plan.remote)) continue;
+      next[c.path] = normalizeText(await remote.read(c.path));
       stats.pulled += 1;
       log.push(`↓ ${c.path}`);
     } else if (c.kind === 'pull-del') {
@@ -129,8 +121,7 @@ export async function syncOnce(
   const conflictOriginals: string[] = [];
   for (const c of plan.changes) {
     if (c.kind !== 'conflict') continue;
-    const sha = plan.remote[c.path];
-    const remoteText = sha ? normalizeText(await readBlob(cfg, sha)) : '';
+    const remoteText = c.path in plan.remote ? normalizeText(await remote.read(c.path)) : '';
     const copy = conflictPath(c.path, taken);
     taken.add(copy);
     next[copy] = remoteText;
@@ -140,7 +131,7 @@ export async function syncOnce(
     log.push(`⚠ ${c.path} 两边都改了，远端版本存为 ${copy}`);
   }
 
-  const treeChanges: { path: string; sha: string | null }[] = [];
+  const writes: RemoteChange[] = [];
   const pushPaths: string[] = [];
   for (const c of plan.changes) {
     if (c.kind === 'push-del') {
@@ -149,31 +140,28 @@ export async function syncOnce(
         log.push(`⏸ 待确认删除远端 ${c.path}`);
         continue;
       }
-      treeChanges.push({ path: c.path, sha: null });
+      writes.push({ path: c.path, content: null });
       pushPaths.push(c.path);
       stats.pushed += 1;
       log.push(`↑ 删除 ${c.path}`);
     } else if (c.kind === 'push-new' || c.kind === 'push-mod') {
       const content = normalizeText(next[c.path] ?? '');
       next[c.path] = content;
-      treeChanges.push({ path: c.path, sha: await createBlob(cfg, content) });
+      writes.push({ path: c.path, content });
       pushPaths.push(c.path);
       stats.pushed += 1;
       log.push(`↑ ${c.path}`);
     }
   }
   for (const copy of copies) {
-    treeChanges.push({ path: copy, sha: await createBlob(cfg, normalizeText(next[copy] ?? '')) });
+    writes.push({ path: copy, content: normalizeText(next[copy] ?? '') });
     pushPaths.push(copy);
     log.push(`↑ 冲突副本 ${copy}`);
   }
 
-  if (treeChanges.length > 0) {
-    const treeSha = await createTree(cfg, treeChanges, plan.head.treeSha);
-    const commitSha = await createCommit(cfg, commitMessage(pushPaths), treeSha, plan.head.commitSha);
-    await updateRef(cfg, commitSha);
-    stats.commitSha = commitSha;
-    log.push(`✔ 已提交 ${commitSha.slice(0, 7)}（${conflictOriginals.length ? `${conflictOriginals.length} 处冲突待你处理` : '干净'}）`);
+  if (writes.length > 0) {
+    await remote.write(writes, commitMessage(pushPaths));
+    log.push(`✔ 已提交 ${writes.length} 个改动（${conflictOriginals.length ? `${conflictOriginals.length} 处冲突待你处理` : '干净'}）`);
   } else if (stats.pulled || stats.removed) {
     log.push('✔ 本地已更新');
   } else if (pendingDeletes.length) {
@@ -182,10 +170,11 @@ export async function syncOnce(
     log.push('✔ 已是最新，无改动');
   }
 
-  const after = await getHead(cfg);
-  const tree = await listTree(cfg, after.treeSha);
+  // 收尾：把快照对齐到远端真值。GitHub 写的是一个 commit，网盘是逐个 PUT ——
+  // 不管哪种，重新列一遍才拿得到"现在到底是什么样"
+  const after = await remote.list();
   const nextSnapshot: Snapshot = {};
-  for (const e of tree.entries) nextSnapshot[e.path] = e.sha;
+  for (const e of after) nextSnapshot[e.path] = e.sha;
 
   return { files: next, snapshot: nextSnapshot, stats, log, pendingDeletes };
 }

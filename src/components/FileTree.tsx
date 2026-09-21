@@ -3,11 +3,18 @@ import { useStore } from '../lib/store';
 import { isPush } from '../lib/decide';
 import { isProgramArtifact } from '../lib/visible';
 import { NOTE_DIRS, notePath } from '../lib/note';
-import type { NoteDir } from '../lib/note';
 import { NOTE_KINDS, isRichPath } from '../lib/rich';
 import type { NoteKind } from '../lib/rich';
 import type { ChangeKind } from '../lib/decide';
-import { Chevron, Eye, EyeOff, FileText, Folder, Paper, Pen, Plus, Trash } from './icons';
+import {
+  buildTree,
+  countInDir,
+  dirsOf,
+  isFolderFile,
+  normalizeDir,
+  type TreeNode,
+} from '../lib/folders';
+import { Chevron, Eye, EyeOff, FileText, Folder, FolderPlus, Paper, Pen, Plus, Trash } from './icons';
 
 /** 中文输入法组字期间按回车是"选词"，不能当成提交 —— 否则打拼音一选字就把笔记建了。 */
 function isComposing(e: React.KeyboardEvent) {
@@ -30,6 +37,10 @@ function Section({ label, count, children }: { label: string; count?: number; ch
   );
 }
 
+/** 一层缩进 14px；文件比它所在的目录再多 22px（给图标和折叠箭头留位置） */
+const dirPad = (depth: number) => 4 + depth * 14;
+const filePad = (depth: number) => 4 + depth * 14 + 22;
+
 export default function FileTree() {
   const files = useStore((s) => s.files);
   const current = useStore((s) => s.current);
@@ -40,14 +51,21 @@ export default function FileTree() {
   const createFile = useStore((s) => s.createFile);
   const createNote = useStore((s) => s.createNote);
   const removeFile = useStore((s) => s.removeFile);
+  const createFolder = useStore((s) => s.createFolder);
+  const removeFolder = useStore((s) => s.removeFolder);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState('thoughts/');
   // 「创建笔记」：只问标题和去处，路径由 note.ts 生成
   const [composing, setComposing] = useState(false);
   const [noteTitle, setNoteTitle] = useState('');
-  const [noteDir, setNoteDir] = useState<NoteDir>('thoughts');
+  const [noteDir, setNoteDir] = useState<string>('thoughts');
   const [noteKind, setNoteKind] = useState<NoteKind>('md');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // 「新建文件夹」：问一个目录名，支持 a/b/c 一次建多层
+  const [foldering, setFoldering] = useState(false);
+  const [folderName, setFolderName] = useState('');
+  // 删目录要人点头：一个目录里可能有十几篇，而且同步之后远端也会跟着没
+  const [pendingDir, setPendingDir] = useState<string | null>(null);
 
   const changeMap = useMemo(() => {
     const m = new Map<string, ChangeKind>();
@@ -55,29 +73,26 @@ export default function FileTree() {
     return m;
   }, [changes]);
 
-  const { rootFiles, groups, total, hiddenCount } = useMemo(() => {
+  const { tree, total, hiddenCount, userDirs } = useMemo(() => {
     const all = Object.keys(files).sort((a, b) => a.localeCompare(b, 'zh'));
-    // 只在这里过滤 —— 同步用的 files 始终是全量，绝不能被这个规则碰到
-    const paths = showAll ? all : all.filter((p) => !isProgramArtifact(p));
-
-    const rootFiles: string[] = [];
-    const g = new Map<string, string[]>();
-    for (const path of paths) {
-      const i = path.indexOf('/');
-      if (i < 0) {
-        rootFiles.push(path);
-        continue;
-      }
-      const dir = path.slice(0, i);
-      const arr = g.get(dir) ?? [];
-      arr.push(path);
-      g.set(dir, arr);
-    }
+    /*
+     * 只在这里过滤 —— 同步用的 files 始终是全量，绝不能被这个规则碰到。
+     *
+     * ⚠️ 但**文件夹的标识文件必须留着**（它就是 `.folder`）：一个空文件夹里只有这一个文件，
+     * 过滤掉它，目录就整棵消失了 —— "建了个文件夹"在界面上等于什么都没发生。
+     * 所以这里放行标识文件，改在渲染时跳过它（`shownFiles`）。
+     */
+    const paths = showAll ? all : all.filter((p) => isFolderFile(p) || !isProgramArtifact(p));
+    const known = new Set<string>(NOTE_DIRS.map((d) => d.dir));
+    const extra = dirsOf(all).filter((d) => !known.has(d));
+    // 「已隐藏 N 个程序文件」照旧只统计真被过滤掉的文件 —— 标识文件是系统文件，
+    // 它进树只是为了撑住目录，不算"被藏起来的程序文件"
+    const visible = showAll ? all : all.filter((p) => !isProgramArtifact(p));
     return {
-      rootFiles,
-      groups: [...g.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+      tree: buildTree(paths),
       total: all.length,
-      hiddenCount: all.length - paths.length,
+      hiddenCount: all.length - visible.length,
+      userDirs: extra,
     };
   }, [files, showAll]);
 
@@ -98,15 +113,34 @@ export default function FileTree() {
   const submitNote = () => {
     createNote(noteDir, noteTitle, noteKind);
     // 目标目录可能是折叠的 —— 展开，否则刚建的笔记当场看不见
-    setCollapsed((prev) => {
-      if (!prev.has(noteDir)) return prev;
-      const next = new Set(prev);
-      next.delete(noteDir);
-      return next;
-    });
+    uncollapse(noteDir);
     setComposing(false);
     setNoteTitle('');
   };
+
+  const submitFolder = () => {
+    const dir = normalizeDir(folderName);
+    if (!dir) return;
+    createFolder(dir);
+    uncollapse(dir);
+    setFoldering(false);
+    setFolderName('');
+  };
+
+  /** 建完东西要把路径上的每一层都展开，不然新东西藏在折叠里看不见 */
+  const uncollapse = (dir: string) =>
+    setCollapsed((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let hit = false;
+      // dir 的每一层前缀都要从折叠集合里拿出来（a/b/c 要展开 a 和 a/b）
+      const segs = dir.split('/');
+      for (let i = 1; i <= segs.length; i++) {
+        const p = segs.slice(0, i).join('/');
+        if (next.delete(p)) hit = true;
+      }
+      return hit ? next : prev;
+    });
 
   const toggle = (dir: string) =>
     setCollapsed((prev) => {
@@ -116,8 +150,8 @@ export default function FileTree() {
       return next;
     });
 
-  const renderFile = (path: string, indent: boolean) => {
-    const name = indent ? path.slice(path.indexOf('/') + 1) : path;
+  const renderFile = (path: string, depth: number) => {
+    const name = path.slice(path.lastIndexOf('/') + 1);
     const kind = changeMap.get(path);
     const active = path === current;
     // 稿纸换个图标，一眼分得开
@@ -128,9 +162,8 @@ export default function FileTree() {
         key={path}
         data-file={path}
         onClick={() => setCurrent(path)}
+        style={{ paddingLeft: filePad(depth) }}
         className={`group relative flex cursor-pointer items-center gap-2 rounded-[7px] py-[6px] pr-1.5 text-[13px] transition-colors duration-100 ${
-          indent ? 'pl-[26px]' : 'pl-2.5'
-        } ${
           /*
            * ⚠️ 选中态的 `bg-surface` 不能换掉。
            * `tests/mobile-e2e.mjs` 靠 `className.includes('bg-surface ')` 把当前行挑出来，
@@ -186,6 +219,63 @@ export default function FileTree() {
     );
   };
 
+  const renderDir = (node: TreeNode, depth: number) => {
+    const open = !collapsed.has(node.path);
+    const inner = countInDir(files, node.path);
+    return (
+      <div key={node.path}>
+        <div
+          data-dir={node.path}
+          className="group relative flex cursor-pointer items-center gap-1.5 rounded-[7px] py-[6px] pr-2 transition-colors hover:bg-surface-2"
+          style={{ paddingLeft: dirPad(depth) }}
+          onClick={() => toggle(node.path)}
+        >
+          <Chevron
+            size={11}
+            strokeWidth={2}
+            className={`shrink-0 text-ink-3 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          />
+          <Folder size={13} className="shrink-0 text-craft/70" />
+          <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{node.name}</span>
+          {inner > 0 && (
+            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10px] text-ink-3">
+              {inner}
+            </span>
+          )}
+          {/*
+            删目录的按钮常显（不像文件那样 hover 才出）：目录行本身是"折叠开关"，
+            在它上面藏一个只有悬停才出现的按钮，触屏上根本点不到。
+          */}
+          <button
+            data-dir-del={node.path}
+            title="删除这个文件夹"
+            className="shrink-0 rounded-[5px] p-0.5 text-ink-3 opacity-0 transition-opacity hover:bg-danger-soft hover:text-danger group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPendingDir(node.path);
+            }}
+          >
+            <Trash size={12} />
+          </button>
+        </div>
+
+        {open && (
+          // 一道竖的 hairline 把"这一层"圈起来：纯靠缩进看层级，深了就分不清谁属于谁
+          <div className="relative space-y-[1px]">
+            <span
+              aria-hidden
+              className="absolute bottom-1 top-0 w-px bg-line"
+              style={{ left: dirPad(depth) + 11 }}
+            />
+            {node.dirs.map((d) => renderDir(d, depth + 1))}
+            {/* 标识文件只为"撑住这个目录"而进树，它自己不该出现在列表里 */}
+            {node.files.filter((p) => !isFolderFile(p)).map((p) => renderFile(p, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Section label="文件">
@@ -200,9 +290,22 @@ export default function FileTree() {
           {showAll ? <Eye size={14} /> : <EyeOff size={14} />}
         </button>
         <button
+          data-new-folder
+          onClick={() => {
+            setFoldering((v) => !v);
+            setCreating(false);
+            setPendingDir(null);
+          }}
+          className="grid h-6 w-6 place-items-center rounded-[7px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+          title="新建文件夹"
+        >
+          <FolderPlus size={14} />
+        </button>
+        <button
           data-new
           onClick={() => {
             setCreating((v) => !v);
+            setFoldering(false);
             setComposing(false);
           }}
           className="grid h-6 w-6 place-items-center rounded-[7px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
@@ -211,6 +314,40 @@ export default function FileTree() {
           <Plus size={14} />
         </button>
       </Section>
+
+      {foldering && (
+        <div data-folder-form className="px-3 pb-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              data-folder-name
+              autoFocus
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (isComposing(e)) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitFolder();
+                }
+                if (e.key === 'Escape') setFoldering(false);
+              }}
+              placeholder="notes/2026-09"
+              className="min-w-0 flex-1 rounded-[8px] border border-line bg-surface px-2.5 py-[6px] font-mono text-[12px] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
+            />
+            <button
+              data-folder-submit
+              onClick={submitFolder}
+              className="shrink-0 rounded-[8px] bg-accent px-2.5 py-[6px] text-[12px] font-medium text-white transition-opacity hover:brightness-[1.06]"
+            >
+              建
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-3">
+            用 <span className="font-mono">/</span> 一次建多层。文件夹其实是一个隐藏的标识文件，
+            这样它在任何云端都真的存在。
+          </p>
+        </div>
+      )}
 
       {creating && (
         <div className="px-3 pb-2">
@@ -233,6 +370,41 @@ export default function FileTree() {
             placeholder="thoughts/2026-09-21-xxx.md"
             className="w-full rounded-[8px] border border-line bg-surface px-2.5 py-[6px] font-mono text-[12px] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
           />
+        </div>
+      )}
+
+      {pendingDir && (
+        <div
+          data-folder-del-confirm
+          className="mx-3 mb-2 rounded-[9px] border border-danger-line bg-danger-soft px-2.5 py-2"
+        >
+          <p className="text-[11.5px] leading-relaxed text-danger">
+            删掉
+            <span className="mx-1 font-mono">{pendingDir}/</span>
+            {countInDir(files, pendingDir) > 0
+              ? `和里面的 ${countInDir(files, pendingDir)} 个文件？`
+              : '？'}
+            同步之后云端也会一起没。
+          </p>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <button
+              data-folder-del-ok
+              onClick={() => {
+                removeFolder(pendingDir);
+                setPendingDir(null);
+              }}
+              className="rounded-[7px] bg-danger px-2 py-[3px] text-[11.5px] font-medium text-white transition-opacity hover:opacity-90"
+            >
+              删除
+            </button>
+            <button
+              data-folder-del-cancel
+              onClick={() => setPendingDir(null)}
+              className="rounded-[7px] border border-danger-line bg-surface px-2 py-[3px] text-[11.5px] text-ink-2 transition-colors hover:text-ink"
+            >
+              先不
+            </button>
+          </div>
         </div>
       )}
 
@@ -265,41 +437,10 @@ export default function FileTree() {
           </div>
         )}
 
-        <div className="space-y-[1px]">{rootFiles.map((p) => renderFile(p, false))}</div>
-
-        {groups.map(([dir, paths]) => {
-          const open = !collapsed.has(dir);
-          return (
-            <div key={dir} className="mt-1.5">
-              <button
-                onClick={() => toggle(dir)}
-                className="flex w-full items-center gap-1.5 rounded-[7px] py-[6px] pl-1 pr-2 text-left transition-colors hover:bg-surface-2 max-md:py-[6px]"
-              >
-                <Chevron
-                  size={11}
-                  strokeWidth={2}
-                  className={`shrink-0 text-ink-3 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
-                />
-                <Folder size={13} className="shrink-0 text-craft/70" />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{dir}</span>
-                <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10px] text-ink-3">
-                  {paths.length}
-                </span>
-              </button>
-              {open && (
-                // 一道竖的 hairline 把"这一组"圈起来：折叠起来是靠留白分组的，
-                // 没有它，目录名和文件名在视觉上是同一层
-                <div className="relative space-y-[1px]">
-                  <span
-                    aria-hidden
-                    className="absolute bottom-1 left-[13px] top-0 w-px bg-line"
-                  />
-                  {paths.map((p) => renderFile(p, true))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <div className="space-y-[1px]">
+          {tree.files.filter((p) => !isFolderFile(p)).map((p) => renderFile(p, 0))}
+          {tree.dirs.map((d) => renderDir(d, 0))}
+        </div>
       </div>
 
       <div className="shrink-0 border-t border-line">
@@ -364,6 +505,7 @@ export default function FileTree() {
                 {NOTE_DIRS.map((d) => (
                   <button
                     key={d.dir}
+                    type="button"
                     data-note-dir={d.dir}
                     title={d.hint}
                     onClick={() => setNoteDir(d.dir)}
@@ -374,6 +516,23 @@ export default function FileTree() {
                     }`}
                   >
                     {d.label}
+                  </button>
+                ))}
+                {/* 自己建的文件夹也该能选 —— 不然"建了文件夹"和"写东西进去"是两件事 */}
+                {userDirs.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    data-note-dir={d}
+                    title={d}
+                    onClick={() => setNoteDir(d)}
+                    className={`rounded-full border px-2 py-[3px] font-mono text-[11.5px] transition-colors ${
+                      noteDir === d
+                        ? 'border-accent-line bg-accent-soft font-medium text-accent'
+                        : 'border-transparent bg-surface-2 text-ink-2 hover:text-ink'
+                    }`}
+                  >
+                    {d}
                   </button>
                 ))}
               </div>
@@ -413,6 +572,7 @@ export default function FileTree() {
             onClick={() => {
               setComposing((v) => !v);
               setCreating(false);
+              setFoldering(false);
             }}
             className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-line bg-surface py-[8px] text-[12.5px] font-medium text-ink-2 shadow-xs transition-[background-color,color,border-color] duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent"
           >

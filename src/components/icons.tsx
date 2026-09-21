@@ -160,6 +160,14 @@ export const Gear = (p: IconProps) => (
   </Svg>
 );
 
+/** 新建文件夹：一枚文件夹 + 加号 */
+export const FolderPlus = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M1.9 4.3a1.2 1.2 0 0 1 1.2-1.2h2.5l1.2 1.5h5a1.2 1.2 0 0 1 1.2 1.2v6.4a1.2 1.2 0 0 1-1.2 1.2H3.1a1.2 1.2 0 0 1-1.2-1.2V4.3Z" />
+    <path d="M8 7.4v3.4M6.3 9.1h3.4" />
+  </Svg>
+);
+
 /** 壁纸 / 图片 */
 export const Image = (p: IconProps) => (
   <Svg {...p}>

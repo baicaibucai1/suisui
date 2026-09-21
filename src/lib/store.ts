@@ -9,6 +9,11 @@ import type { NoteKind } from './rich';
 import type { GhConfig } from './gh';
 import { DEFAULT_WALLPAPER, normalizeWallpaper } from './wallpaper';
 import type { WallpaperConfig } from './wallpaper';
+import { createFolder as makeFolder, removeDir as dropDir } from './folders';
+import { makeRemote } from './providers';
+import type { ProviderId, Remote } from './providers';
+import type { DavConfig } from './providers/webdav';
+import type { OneDriveConfig } from './providers/onedrive';
 
 const ENV_TOKEN = (import.meta.env.VITE_GH_TOKEN as string | undefined) ?? '';
 
@@ -56,8 +61,17 @@ type State = {
   wallpaper: WallpaperConfig;
   /** 设置面板是否打开。不持久化 —— 每次进来被面板糊住半屏是打扰。 */
   settings: boolean;
+  /** 同步到哪家。三种后端的凭据各自存一份，切来切去不用重填。 */
+  provider: ProviderId;
+  dav: DavConfig;
+  od: OneDriveConfig;
 
   cfg: () => GhConfig;
+  /** 当前后端造出来的 Remote（比对引擎只认这个接口）。 */
+  remote: () => Remote;
+  setProvider: (id: ProviderId) => void;
+  setDav: (patch: Partial<DavConfig>) => void;
+  setOd: (patch: Partial<OneDriveConfig>) => void;
   setToken: (t: string) => void;
   setShowAll: (v: boolean) => void;
   setDrawer: (v: boolean) => void;
@@ -69,6 +83,10 @@ type State = {
   removeFile: (path: string) => void;
   /** 按「目录 + 标题」造一篇新笔记，返回最终路径（重名会自动加 -2）。 */
   createNote: (dir: string, title: string, kind?: NoteKind) => string;
+  /** 建文件夹（= 在目录里放一个隐藏标识文件）。返回最终目录名，非法输入返回 null。 */
+  createFolder: (dir: string) => string | null;
+  /** 删文件夹 = 删掉这个前缀下的所有文件。**不可逆**（远端要等同步确认）。 */
+  removeFolder: (dir: string) => void;
   refreshPlan: () => Promise<void>;
   doSync: (allowDelete?: boolean) => Promise<void>;
   cancelDeletes: () => void;
@@ -94,8 +112,25 @@ export const useStore = create<State>()(
       drawer: false,
       wallpaper: DEFAULT_WALLPAPER,
       settings: false,
+      provider: 'github',
+      // 坚果云的地址留着默认那个（就是它家的 WebDAV 入口），账号和应用密码要用户填
+      dav: { url: 'https://dav.jianguoyun.com/dav/碎碎', user: '', pass: '' },
+      od: { token: '', basePath: '碎碎' },
 
       cfg: () => ({ owner: OWNER, repo: REPO, branch: BRANCH, token: get().token }),
+
+      remote: () => {
+        const s = get();
+        return makeRemote(s.provider, {
+          github: { owner: OWNER, repo: REPO, branch: BRANCH, token: s.token },
+          nutstore: s.dav,
+          onedrive: s.od,
+        });
+      },
+
+      setProvider: (id) => set({ provider: id }),
+      setDav: (patch) => set({ dav: { ...get().dav, ...patch } }),
+      setOd: (patch) => set({ od: { ...get().od, ...patch } }),
 
       setToken: (t) => set({ token: t }),
       setShowAll: (v) => set({ showAll: v }),
@@ -151,12 +186,35 @@ export const useStore = create<State>()(
         return p;
       },
 
+      // 目录不是"一个空壳"：要建就在里面放一个隐藏的标识文件（理由见 lib/folders.ts）。
+      // 目录已经存在时它不会覆盖原文件 —— 重复建不该把别人改过的说明冲掉。
+      createFolder: (dir) => {
+        const r = makeFolder(get().files, dir);
+        if (!r) return null;
+        set({ files: r.files, dirty: true, planStale: true, drawer: false });
+        return r.dir;
+      },
+
+      removeFolder: (dir) => {
+        const r = dropDir(get().files, dir);
+        if (r.removed.length === 0) return;
+        const gone = new Set(r.removed);
+        const cur = get().current;
+        set({
+          files: r.files,
+          // 当前打开的那篇被一起删了就回到空态，别停在"打不开的文件"上
+          current: cur && gone.has(cur) ? null : cur,
+          dirty: true,
+          planStale: true,
+        });
+      },
+
       refreshPlan: async () => {
         const seq = ++opSeq;
-        const { cfg, files, snapshot } = get();
+        const { remote, files, snapshot } = get();
         set({ busy: 'plan', error: null });
         try {
-          const plan = await planSync(cfg(), files, snapshot);
+          const plan = await planSync(remote(), files, snapshot);
           if (seq !== opSeq) return;
           set({ changes: plan.changes, busy: null, planStale: false });
         } catch (e) {
@@ -167,10 +225,10 @@ export const useStore = create<State>()(
 
       doSync: async (allowDelete = false) => {
         const seq = ++opSeq;
-        const { cfg, files, snapshot } = get();
+        const { remote, files, snapshot } = get();
         set({ busy: 'sync', error: null, log: [], pendingDeletes: null });
         try {
-          const res = await syncOnce(cfg(), files, snapshot, { allowDelete });
+          const res = await syncOnce(remote(), files, snapshot, { allowDelete });
           if (seq !== opSeq) return;
           const blocked = new Set(res.pendingDeletes);
           set({
@@ -206,6 +264,9 @@ export const useStore = create<State>()(
         lastSyncAt: s.lastSyncAt,
         showAll: s.showAll,
         wallpaper: s.wallpaper,
+        provider: s.provider,
+        dav: s.dav,
+        od: s.od,
       }),
     },
   ),
