@@ -8,6 +8,7 @@ import { RICH_EXT, richBody } from './rich';
 import type { NoteKind } from './rich';
 import type { GhConfig } from './gh';
 import { createFolder as makeFolder, removeDir as dropDir } from './folders';
+import { dirOf, resolveWiki } from './links';
 import { makeRemote } from './providers';
 import type { ProviderId, Remote } from './providers';
 import type { DavConfig } from './providers/webdav';
@@ -62,6 +63,17 @@ type State = {
   provider: ProviderId;
   dav: DavConfig;
   od: OneDriveConfig;
+  /**
+   * 侧栏按标签筛选（点正文里的 `#tag` 进来的）。`null` = 不筛，照常按目录显示。
+   * **不持久化** —— 下次打开看见列表只露出几个文件会以为文件丢了。
+   */
+  tagFilter: string | null;
+  /**
+   * 点链接跳过去后要滚到哪个小节。配合 `jumpTick` 用：
+   * 同一篇里点 `[[这篇#小节]]` 时 current 没变，光靠它触发不了滚动。
+   */
+  pendingHeading: string | null;
+  jumpTick: number;
 
   cfg: () => GhConfig;
   /** 当前后端造出来的 Remote（比对引擎只认这个接口）。 */
@@ -86,6 +98,13 @@ type State = {
   refreshPlan: () => Promise<void>;
   doSync: (allowDelete?: boolean) => Promise<void>;
   cancelDeletes: () => void;
+  /**
+   * 点 `[[笔记]]` 要去的那一篇。**没有就当场建一篇**（Obsidian 的规矩）：
+   * 链接写着呢，那这篇就该存在。建在哪儿 = 当前文件所在目录。
+   */
+  openWiki: (target: string, heading?: string) => { path: string; created: boolean } | null;
+  setTagFilter: (tag: string | null) => void;
+  setPendingHeading: (h: string | null) => void;
 };
 
 export const useStore = create<State>()(
@@ -111,6 +130,9 @@ export const useStore = create<State>()(
       // 坚果云的地址留着默认那个（就是它家的 WebDAV 入口），账号和应用密码要用户填
       dav: { url: 'https://dav.jianguoyun.com/dav/碎碎', user: '', pass: '' },
       od: { token: '', basePath: '碎碎' },
+      tagFilter: null,
+      pendingHeading: null,
+      jumpTick: 0,
 
       cfg: () => ({ owner: OWNER, repo: REPO, branch: BRANCH, token: get().token }),
 
@@ -247,6 +269,27 @@ export const useStore = create<State>()(
       },
 
       cancelDeletes: () => set({ pendingDeletes: null }),
+
+      openWiki: (target, heading = '') => {
+        const s = get();
+        const name = target.trim();
+        if (!name) return null;
+        const paths = Object.keys(s.files);
+        const dir = dirOf(s.current ?? '');
+        const hit = resolveWiki(name, paths, dir);
+        const jump = { pendingHeading: heading || null, jumpTick: s.jumpTick + 1 };
+        if (hit) {
+          set({ current: hit, drawer: false, ...jump });
+          return { path: hit, created: false };
+        }
+        // 没有这篇就建 —— 链接指向的笔记理应存在。落在当前目录，没有就 thoughts
+        const p = get().createNote(dir || 'thoughts', name);
+        set({ pendingHeading: null, jumpTick: s.jumpTick + 1 });
+        return { path: p, created: true };
+      },
+
+      setTagFilter: (tag) => set({ tagFilter: tag }),
+      setPendingHeading: (h) => set({ pendingHeading: h, jumpTick: get().jumpTick + 1 }),
     }),
     {
       name: 'suisui.demo.v1',

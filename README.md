@@ -102,6 +102,37 @@ VITE_GH_BRANCH=main
   `api.github.com` 一律放行到网络（缓存住实时数据等于把用户锁在旧快照上）。
   实测断网后照样打开、本地笔记还在
 
+## 双链与标签
+
+正文里写 `[[笔记名]]` 就是一条链接，`#标签` 就是一个标签。**落盘的还是这几个字**
+（markdown 里 `[[ ]]` 没有任何语法含义），所以别的软件打开照样读得懂，同步到 GitHub 也不脏。
+
+| 写法 | 意思 |
+|---|---|
+| `[[开张]]` | 链到「开张」那篇 |
+| `[[开张#第二段]]` | 链到那篇的「第二段」小节，跳过去并滚到那儿闪一下 |
+| `[[开张|去看]]` | 显示成「去看」，仍指向开张（`|` 只影响显示，不影响指向） |
+| `#灵感` / `#读书/笔记` | 标签，可点（侧栏只留带它的篇） |
+
+- **怎么点**：桌面是 **Ctrl / ⌘ + 单击**（单击是"把光标放进去改字"，这是编辑器不是阅读器）；
+  手机上没有修饰键，退化成单击就跳。
+- **指到了没有一眼看得出来**：有那篇是实线，没有是**虚线 + 灰字**。点虚线的会当场把那篇建出来
+  （建在引用它的那篇所在目录），建完链接自动变实线。
+- **打 `[[` 弹补全**（↑↓ 选、回车确认、Esc 收起），最后一项永远是「创建《你打的字》」。
+- **反向链接面板**：正文下面那条，显示这篇的标签、**谁引用了这篇**（带那一句的上下文，可点回去）、
+  以及这篇指向但还没建的篇。三样都空时整块不渲染 —— 一个空面板占着正文的位置是浪费。
+- **标签筛选**：点 `#标签`，侧栏顶部出现 `#标签 × N 篇`，列表切成**一列平铺的篇**
+  （同一个标签下的几篇往往散在不同目录，套回树里反而找不到）。再点一次或按 × 退出。
+- **名字解析放宽四档**：全路径 → 路径去后缀 → 文件名 → **标题**（文件名是 `2026-09-21-开张`，
+  但人写链接只会写 `[[开张]]`）。同名多篇时优先**同目录**的那篇。
+
+⚠️ **保存前必须把 `[[` 的转义吃回去**（`lib/links.ts` 的 `unescapeWiki`）：
+markdown 序列化器会把 `[[` 写成 `\[\[`，不还原的话磁盘上那串字就不再是链接了 ——
+反向链接会整片失效，别的软件打开只看到一串反斜杠。这是踩过的，不是理论风险。
+
+源码模式（textarea）里没有高亮也没有补全 —— 它是纯文本框，没法给一段字套 span。
+反链面板不受影响，两种模式都在。
+
 ## 同步后端：GitHub / 坚果云 / OneDrive
 
 比对引擎（`lib/sync.ts`）**只认一个接口** `Remote`（`lib/providers/types.ts`）：
@@ -162,6 +193,9 @@ OneDrive 给 quickXorHash，算法跟本地不同 —— 直接拿来当基线�
 - 安卓端的坚果云（同样卡在 CORS，需要原生插件走 Kotlin 发 WebDAV）
 - 冲突的三路自动合并（现在只留副本）
 - 图片等二进制
+- 双链还差几件事：**改名不断链**（现在改名了，别人引的还是旧名字）、
+  **未创建链接的批量创建**、标签的全局列表视图（现在只能从某篇里点进去筛）、
+  `![[嵌入]]`（把另一篇的正文嵌进来）、源码模式下的链接高亮与补全（textarea 做不到）
 
 ## 测试
 
@@ -173,6 +207,8 @@ node tests/mdkit.test.mjs         # md 工具栏源码模式 67 例（标题 / �
 node tests/rich.test.mjs          # 稿纸格式内核 50 例（拆合 / 圈作用域 / 清洗 / 主题预设）
 node tests/folder.test.mjs        # 文件夹 58 例（目录名清洗 / 标识文件 / 空目录推导 / 嵌套建树）
 node tests/davxml.test.mjs        # WebDAV 的 PROPFIND 解析 15 例（编码 / 库根剥离 / 各家写法差异）
+node tests/links.test.mjs         # 双链与标签 78 例（解析 / 代码块不算 / 标题去日期前缀 / 转义还原）
+node tests/link-e2e.mjs           # 浏览器：高亮 → Ctrl+点跳转 → 点没有的就建 → 补全 → 标签筛选 → 反链面板
 node tests/folder-e2e.mjs         # 浏览器：建多层文件夹 → 空目录看得见 → 往里写笔记 → 删（含确认）
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
 node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
@@ -311,6 +347,8 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/lib/mdkit.ts` | md 工具栏**源码模式**的 md 语法改写（零依赖，可单测）＋ 两种模式共用的 `ToolId` / `Active` |
 | `src/lib/rich.ts` | 稿纸格式内核：拆合「这篇的 CSS / 正文」、`scopedCss` 圈作用域、HTML 清洗、主题预设（零依赖，可单测） |
 | `src/lib/folders.ts` | 文件夹：目录名清洗、标识文件、目录推导、嵌套建树（零依赖，可单测） |
+| `src/lib/links.ts` | 双链与标签：解析、名字→路径、反向链接 / 标签索引、补全候选、`unescapeWiki`（零依赖，可单测） |
+| `src/lib/pm-links.ts` | ProseMirror 插件：`[[ ]]` / `#tag` 的装饰（**不动 schema，只加 span**）、`[[` 补全的触发与插入 |
 | `src/lib/providers/types.ts` | 同步后端的统一接口 `Remote` + 各家元数据（含"浏览器能不能直连 / 做完没有"） |
 | `src/lib/providers/github.ts` | GitHub 实现（Git Data API，一个 commit） |
 | `src/lib/providers/webdav.ts` | 坚果云实现（WebDAV）。请求走注入的 transport —— 浏览器没有，桌面端才有 |
@@ -323,7 +361,9 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/components/RichToolbar.tsx` | 稿纸的 25 个工具 + 色板 / 字号字体弹层 |
 | `src/components/EditorShell.tsx` | 编辑器外壳（台面 → 纸面 → 路径栏 / 模式开关 / 面包屑）。md 与稿纸共用，**必须留在主包里** |
 | `src/components/EmptyState.tsx` | 编辑区的两种"还没有编辑器"状态（空态 / 加载骨架）。**必须在主包里** —— 见「已实现」里的按需加载 |
-| `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（同步 + 设置）** / 文件树（含「创建笔记」） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
+| `src/components/WikiHints.tsx` | `[[` 补全浮层（跟着 `[[` 那个字符定位，mousedown 掐默认动作以保住编辑器焦点） |
+| `src/components/BacklinkPane.tsx` | 正文下方的反向链接 / 标签 / 待建笔记面板（有关系才出现） |
+| `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（同步 + 设置）** / 文件树（含「创建笔记」、标签筛选） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
 | `src/main.tsx` | 入口。DEV 下把 store 挂到 `window.__suisui`；**只在 PROD 注册 Service Worker** |
 | `public/manifest.webmanifest` | PWA 清单（standalone / 图标 / 语言） |
 | `public/sw.js` | 离线外壳：导航 network-first，静态资源 SWR，跨域一律放行 |
@@ -369,7 +409,12 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-provider="<后端>"` / `data-dav-url` / `data-dav-user` / `data-dav-pass` / `data-dav-warn` / `data-od-token` / `data-od-base`
   / `data-new-folder` / `data-folder-name` / `data-folder-submit` / `data-dir="<目录>"` / `data-dir-del="<目录>"`
   / `data-folder-del-confirm` / `data-folder-del-ok` / `data-folder-del-cancel`
+  / `data-wiki`（装饰 span，带 `data-heading`） / `data-tag` / `data-wiki-hints` / `data-wiki-hint="<序号>"` / `data-wiki-kind`
+  / `data-backlinks` / `data-backlink-tag` / `data-backlink-from` / `data-backlink-create`
+  / `data-tag-filter` / `data-tag-clear` / `data-tag-empty`
   / `data-editor-empty` / `data-editor-loading`），e2e 依赖它们。
+- ⚠️ **点正文里的链接必须带 Ctrl / ⌘**（`click({ modifiers: ['Control'] })`），
+  单击是"把光标放进去改字"；只有窄屏（≤768px）是单击就跳。测试里漏了 modifiers 会一直点不动。
 - ⚠️ **文件树选中行的 `bg-surface` 不能换**：`tests/mobile-e2e.mjs` 靠
   `className.includes('bg-surface ')` 把当前行挑出来，再断言其余行没有常显删除按钮。
   换成别的底色（比如 bg-accent-soft）那条断言会当场假红。

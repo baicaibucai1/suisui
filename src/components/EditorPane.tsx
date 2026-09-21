@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Crepe } from '@milkdown/crepe';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 import { commandsCtx, editorStateCtx, editorViewCtx } from '@milkdown/kit/core';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import { lift } from '@milkdown/kit/prose/commands';
 import {
   createCodeBlockCommand,
@@ -21,7 +22,13 @@ import { toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { useStore } from '../lib/store';
 import { EMPTY_ACTIVE, activeFromText, applyTool, linkAt } from '../lib/mdkit';
 import type { Active, ToolId } from '../lib/mdkit';
+import { dirOf, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
+import { insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
+import type { WikiQuery } from '../lib/pm-links';
 import { isRichPath } from '../lib/rich';
+import WikiHints from './WikiHints';
+import type { HintItem } from './WikiHints';
+import BacklinkPane from './BacklinkPane';
 import MdToolbar from './MdToolbar';
 import RichPane from './RichPane';
 import { Badge, EditorShell, ModeSwitch, SheetBody } from './EditorShell';
@@ -90,6 +97,9 @@ function snapFromEditor(crepe: Crepe): Snap {
   });
 }
 
+/** 窄屏（手机）没有 Ctrl 键，那边改成单击就跳 —— 见下面的 handleWikiClick */
+const NARROW = '(max-width: 768px)';
+
 export default function EditorPane() {
   const current = useStore((s) => s.current);
   const files = useStore((s) => s.files);
@@ -97,11 +107,20 @@ export default function EditorPane() {
   const lastSyncAt = useStore((s) => s.lastSyncAt);
   const setContent = useStore((s) => s.setContent);
   const focusTick = useStore((s) => s.focusTick);
+  const openWiki = useStore((s) => s.openWiki);
+  const setTagFilter = useStore((s) => s.setTagFilter);
+  const tagFilter = useStore((s) => s.tagFilter);
+  const pendingHeading = useStore((s) => s.pendingHeading);
+  const jumpTick = useStore((s) => s.jumpTick);
+  const setPendingHeading = useStore((s) => s.setPendingHeading);
   const [mode, setMode] = useState<Mode>('wysiwyg');
   const [fail, setFail] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [snap, setSnap] = useState<Snap>(EMPTY_SNAP);
   const [selTick, setSelTick] = useState(0);
+  /** `[[` 之后的补全：光标查询 + 当前选到第几项 */
+  const [hint, setHintState] = useState<WikiQuery | null>(null);
+  const [hintIdx, setHintIdx] = useState(0);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -112,6 +131,23 @@ export default function EditorPane() {
   const draftRef = useRef<number | undefined>(undefined);
   /** 建这个编辑器实例时的 lastSyncAt —— 用来分辨「为什么重建」 */
   const builtAtSync = useRef<string | null>(null);
+  /*
+   * 补全要用的几样东西，都走 ref：
+   * 插件是**建实例那一刻**装进去的，它闭包里抓到的 state 会永远停在那一刻，
+   * 而笔记列表、查询词每时每刻都在变。所以插件只认 ref，读到的永远是最新值。
+   */
+  const pathsRef = useRef<string[]>([]);
+  const dirRef = useRef('');
+  /** focusTick 的最新值 —— 编辑器创建那段异步代码要读它，闭包里的会过期 */
+  const focusTickRef = useRef(0);
+  const hintRef = useRef<WikiQuery | null>(null);
+  const hintIdxRef = useRef(0);
+  /*
+   * Esc 关掉的那一次要**记住**。不记的话，任何一次编辑器更新（哪怕只是光标抖了一下）
+   * 都会把浮层又弹回来 —— 光标还停在 `[[` 后面，查询条件照样成立。
+   * 只有继续打字（查询词变了或位置变了）才算"又要补全了"，这时才解除。
+   */
+  const dismissedRef = useRef<{ text: string; from: number } | null>(null);
 
   const content = current ? (files[current] ?? '') : '';
   const isMd = current ? current.toLowerCase().endsWith('.md') : false;
@@ -119,6 +155,106 @@ export default function EditorPane() {
   const isRich = current ? isRichPath(current) : false;
   // 所见即所得把裸 HTML / HTML 注释当纯文本，保存会把标记改坏 —— 这类文件提示走源码模式
   const hasRawHtml = isMd && /<!--|<[a-z][a-z0-9]*(\s|\/?>)/i.test(content);
+
+  /** 能当链接目标的只有 md 笔记（稿纸不是 markdown，链过去也没法解析） */
+  const mdPaths = useMemo(() => Object.keys(files).filter((p) => p.toLowerCase().endsWith('.md')), [files]);
+  // 渲染时顺手刷新：插件读的是这两个 ref，不是渲染闭包里的旧值
+  pathsRef.current = mdPaths;
+  dirRef.current = dirOf(current ?? '');
+  focusTickRef.current = focusTick;
+
+  /** 补全候选。查询词为空时给最近几篇，最后永远挂着「创建」那一项。 */
+  const hintItems = useMemo<HintItem[]>(() => {
+    if (!hint) return [];
+    const items: HintItem[] = suggestNotes(hint.text, mdPaths, 8).map((p) => ({
+      kind: 'open',
+      name: titleOf(p),
+      path: p,
+      sub: p,
+    }));
+    const q = hint.text.trim();
+    const exact = mdPaths.some((p) => titleOf(p).toLowerCase() === q.toLowerCase());
+    if (q && !exact) items.push({ kind: 'create', name: `创建《${q}》`, sub: '先建一篇，点链接再过去' });
+    return items;
+  }, [hint, mdPaths]);
+
+  const setHint = useCallback((q: WikiQuery | null) => {
+    hintRef.current = q;
+    setHintState(q);
+    // 换了一批候选，选中项要回到第一条 —— 否则打字时会选中一个不相干的
+    hintIdxRef.current = 0;
+    setHintIdx(0);
+  }, []);
+
+  /** 插件那边说"该弹了"。刚被 Esc 收掉的那一拨不再弹，除非查询词又变了。 */
+  const onQuery = useCallback(
+    (q: WikiQuery | null) => {
+      if (!q) {
+        setHint(null);
+        return;
+      }
+      const d = dismissedRef.current;
+      if (d && d.from === q.from && d.text === q.text) {
+        hintRef.current = null;
+        setHintState(null);
+        return;
+      }
+      if (d) dismissedRef.current = null;
+      setHint(q);
+    },
+    [setHint],
+  );
+
+  /** 选中第 i 项：把 `[[已打的字` 换成 `[[笔记名]]` */
+  const pickHint = useCallback(
+    (i: number) => {
+      const h = hintRef.current;
+      const crepe = crepeRef.current;
+      if (!h || !crepe) return;
+      const it = hintItems[i];
+      if (!it) return;
+      try {
+        const view = crepe.editor.action((ctx) => ctx.get(editorViewCtx));
+        const name = it.kind === 'create' ? h.text.trim() : it.name;
+        if (name) insertWiki(view, h.from, h.from + h.text.length + 2, name);
+      } catch {
+        /* 编辑器还没就绪，就当没选 */
+      }
+      setHint(null);
+    },
+    [hintItems, setHint],
+  );
+
+  /** 浮层开着时，方向键/回车/Esc 归它 —— 回车不能变成换行 */
+  const onHintKey = useCallback(
+    (e: KeyboardEvent): boolean => {
+      const h = hintRef.current;
+      if (!h) return false;
+      const n = hintItems.length;
+      if (e.key === 'Escape') {
+        dismissedRef.current = { text: h.text, from: h.from };
+        setHint(null);
+        return true;
+      }
+      if (n === 0) return false;
+      if (e.key === 'ArrowDown') {
+        hintIdxRef.current = (hintIdxRef.current + 1) % n;
+        setHintIdx(hintIdxRef.current);
+        return true;
+      }
+      if (e.key === 'ArrowUp') {
+        hintIdxRef.current = (hintIdxRef.current - 1 + n) % n;
+        setHintIdx(hintIdxRef.current);
+        return true;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        pickHint(hintIdxRef.current);
+        return true;
+      }
+      return false;
+    },
+    [hintItems, pickHint, setHint],
+  );
 
   const readSnap = useCallback((): Snap => {
     if (mode === 'source') {
@@ -169,9 +305,20 @@ export default function EditorPane() {
             if (!ready || markdown === last) return;
             last = markdown;
             window.clearTimeout(saveRef.current);
-            saveRef.current = window.setTimeout(() => setContent(current, markdown), 700);
+            // ⚠️ 所见即所得把 `[[` 序列化成 `\[\[`，存进去就不是链接了 —— 写回前还原
+            saveRef.current = window.setTimeout(() => setContent(current, unescapeWiki(markdown)), 700);
           });
         });
+        // ⚠️ 必须在 create() **之前**挂：插件是在编辑器起来那一刻装进去的，晚了就没有
+        crepe.editor.use(
+          wikiLinkPlugin({
+            paths: () => pathsRef.current,
+            dir: () => dirRef.current,
+            onQuery,
+            onKey: onHintKey,
+            open: () => hintRef.current !== null,
+          }),
+        );
         await crepe.create();
         if (disposed) {
           await crepe.destroy();
@@ -182,6 +329,30 @@ export default function EditorPane() {
         last = crepe.getMarkdown();
         ready = true;
         setFail(null);
+        /*
+         * 「创建笔记」之后把光标送进正文 —— **就在此刻处理**，不要另外起轮询去等：
+         * 仓库一大，重建一个 Crepe 实例要一秒多，轮询等到的时刻比这晚得多，
+         * 期间焦点还停在「创建」那颗按钮上（实测：1.2 秒时光标仍在 BUTTON 里）。
+         *
+         * 两件事：① 末尾只有标题时补个空段落（`# 标题\n\n` 的空行会被 markdown 解析掉）；
+         * ② 用 ProseMirror 自己的 selection 把光标放到末尾 —— 塞 DOM Range 会被它下一帧覆盖回去。
+         */
+        if (focusTickRef.current > seenFocus.current) {
+          seenFocus.current = focusTickRef.current;
+          try {
+            crepe.editor.action((ctx) => {
+              const view = ctx.get(editorViewCtx);
+              const paragraph = view.state.schema.nodes.paragraph;
+              if (paragraph && view.state.doc.lastChild?.type.name === 'heading') {
+                view.dispatch(view.state.tr.insert(view.state.doc.content.size, paragraph.create()));
+              }
+              view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+              view.focus();
+            });
+          } catch {
+            /* 编辑器刚起来就取不到就算了，光标停在开头也不是不能写 */
+          }
+        }
       } catch (e) {
         setFail((e as Error).message);
       }
@@ -197,7 +368,7 @@ export default function EditorPane() {
       const rebuildingForSync = store.lastSyncAt !== builtAtSync.current;
       if (instance && !rebuildingForSync && current in store.files) {
         try {
-          const md = instance.getMarkdown();
+          const md = unescapeWiki(instance.getMarkdown());
           if (md !== store.files[current]) setContent(current, md);
         } catch {
           /* 取不到就算了，别让清理逻辑炸掉整棵树 */
@@ -225,7 +396,7 @@ export default function EditorPane() {
     const crepe = crepeRef.current;
     if (!crepe || !current) return;
     try {
-      const md = crepe.getMarkdown();
+      const md = unescapeWiki(crepe.getMarkdown());
       if (md !== useStore.getState().files[current]) {
         window.clearTimeout(saveRef.current);
         setContent(current, md);
@@ -235,54 +406,114 @@ export default function EditorPane() {
     }
   }, [current, setContent]);
 
-  /** 文档末尾只有标题时，markdown 的 `\n\n` 会被解析掉 —— 补个空段落，光标才落得进去。 */
-  const ensureTrailingParagraph = useCallback(() => {
-    const crepe = crepeRef.current;
-    if (!crepe) return;
-    try {
-      crepe.editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
-        const last = view.state.doc.lastChild;
-        if (!last || last.type.name !== 'heading') return;
-        const paragraph = view.state.schema.nodes.paragraph;
-        if (!paragraph) return;
-        view.dispatch(view.state.tr.insert(view.state.doc.content.size, paragraph.create()));
-      });
-    } catch {
-      /* 编辑器还没就绪，下一轮轮询再试 */
-    }
-  }, []);
-
-  // 「创建笔记」之后把光标送进正文。WYSIWYG 实例是异步建的，所以轮询等它就绪。
+  /*
+   * 源码模式下「创建笔记」之后把光标放进 textarea。
+   * 那条路没有 ProseMirror，textarea 是同步渲染的，直接聚焦就行；
+   * 所见即所得那条路不在这儿 —— 它要等实例建好，见上面 create() 之后那一段。
+   */
   useEffect(() => {
     if (focusTick <= seenFocus.current) return;
+    if (mode === 'wysiwyg' && isMd) return;
     seenFocus.current = focusTick;
-    let tries = 0;
-    const timer = window.setInterval(() => {
-      if (mode === 'wysiwyg' && isMd) ensureTrailingParagraph();
-      const el = hostRef.current?.querySelector<HTMLElement>('.ProseMirror') ?? taRef.current ?? null;
-      if (!el) {
-        if (++tries > 25) window.clearInterval(timer);
+    const el = taRef.current;
+    if (!el) return;
+    el.focus();
+    try {
+      el.setSelectionRange(el.value.length, el.value.length);
+    } catch {
+      /* 放不进去就算了，聚焦本身已经够用 */
+    }
+  }, [focusTick, mode, isMd]);
+
+  /*
+   * 笔记列表变了（刚建了一篇、刚同步下来一批），已经存在的链接要**从灰变亮**。
+   * 装饰默认只在文档改动时重算，而这时文档一个字没动 —— 得手动刷一下。
+   */
+  useEffect(() => {
+    const crepe = crepeRef.current;
+    if (!crepe || mode !== 'wysiwyg') return;
+    try {
+      crepe.editor.action((ctx) => refreshWiki(ctx.get(editorViewCtx)));
+    } catch {
+      /* 编辑器还没起来，跳过 */
+    }
+  }, [files, mode]);
+
+  /*
+   * 正文里的 `[[链接]]` / `#标签` 是可点的 —— 但**不是单击就跳**。
+   * 这是编辑器不是阅读器：单击是"把光标放进去改字"，跳走会让人丢失正在写的位置。
+   * 所以桌面端要 Ctrl / ⌘ + 单击；手机上没有修饰键，那边退化成单击就跳。
+   */
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || mode !== 'wysiwyg' || !isMd) return;
+    const onClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      const narrow = window.matchMedia(NARROW).matches;
+      const go = e.ctrlKey || e.metaKey || narrow;
+      if (!go) return;
+
+      const wiki = el.closest('[data-wiki]');
+      if (wiki instanceof HTMLElement && wiki.dataset.wiki) {
+        e.preventDefault();
+        openWiki(wiki.dataset.wiki, wiki.dataset.heading ?? '');
         return;
       }
-      el.focus();
-      // 光标放到末尾：默认停在开头，一打字就插到标题前面
-      try {
-        const sel = window.getSelection();
-        if (sel && el.lastChild) {
-          const r = document.createRange();
-          r.selectNodeContents(el.lastChild);
-          r.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(r);
-        }
-      } catch {
-        /* 放不进去就算了，聚焦本身已经够用 */
+      const tag = el.closest('[data-tag]');
+      if (tag instanceof HTMLElement && tag.dataset.tag) {
+        e.preventDefault();
+        // 再点一次同一个标签 = 取消筛选
+        setTagFilter(tagFilter === tag.dataset.tag ? null : tag.dataset.tag);
       }
-      window.clearInterval(timer);
-    }, 80);
+    };
+    host.addEventListener('click', onClick);
+    return () => host.removeEventListener('click', onClick);
+  }, [mode, isMd, openWiki, setTagFilter, tagFilter]);
+
+  /*
+   * 点 `[[某篇#某个小节]]` 跳过去之后，滚到那个小节并闪一下。
+   * 编辑器是异步建的，所以轮询等它就绪 —— 跟「创建笔记后放光标」那条一个套路。
+   */
+  useEffect(() => {
+    if (!pendingHeading || mode !== 'wysiwyg' || !isMd) return;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      const crepe = crepeRef.current;
+      if (!crepe) {
+        if (++tries > 25) {
+          window.clearInterval(timer);
+          setPendingHeading(null);
+        }
+        return;
+      }
+      let done = false;
+      try {
+        done = crepe.editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx);
+          const want = pendingHeading.trim();
+          let pos = -1;
+          view.state.doc.descendants((node, p) => {
+            if (pos < 0 && node.type.name === 'heading' && node.textContent.trim() === want) pos = p;
+          });
+          if (pos < 0) return false;
+          const dom = view.nodeDOM(pos);
+          if (!(dom instanceof HTMLElement)) return false;
+          dom.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          dom.classList.add('su-flash');
+          window.setTimeout(() => dom.classList.remove('su-flash'), 1400);
+          return true;
+        });
+      } catch {
+        /* 还没排版完，下一拍再试 */
+      }
+      if (done || ++tries > 25) {
+        window.clearInterval(timer);
+        setPendingHeading(null);
+      }
+    }, 100);
     return () => window.clearInterval(timer);
-  }, [focusTick, current, mode, isMd, ensureTrailingParagraph]);
+  }, [pendingHeading, jumpTick, mode, isMd, setPendingHeading]);
 
   // 源码模式：受控 textarea 每次重渲染都会把光标扔到末尾，必须手动还回去
   useLayoutEffect(() => {
@@ -473,6 +704,26 @@ export default function EditorPane() {
           />
         )}
       </SheetBody>
+
+      {/*
+        反向链接 / 标签 / 还没建的那些篇。没有关系的篇它整块不渲染，
+        所以不用给它留一条永远占着位置的边栏。
+      */}
+      {isMd && <BacklinkPane path={current} text={content} />}
+
+      {hint && mode === 'wysiwyg' && (
+        <WikiHints
+          x={hint.x}
+          y={hint.y}
+          items={hintItems}
+          index={hintIdx}
+          onPick={pickHint}
+          onHover={(i) => {
+            hintIdxRef.current = i;
+            setHintIdx(i);
+          }}
+        />
+      )}
     </EditorShell>
   );
 }

@@ -14,7 +14,8 @@ import {
   normalizeDir,
   type TreeNode,
 } from '../lib/folders';
-import { Chevron, Eye, EyeOff, FileText, Folder, FolderPlus, Paper, Pen, Plus, Trash } from './icons';
+import { tagsOf } from '../lib/links';
+import { Chevron, Close, Eye, EyeOff, FileText, Folder, FolderPlus, Paper, Pen, Plus, Tag, Trash } from './icons';
 
 /** 中文输入法组字期间按回车是"选词"，不能当成提交 —— 否则打拼音一选字就把笔记建了。 */
 function isComposing(e: React.KeyboardEvent) {
@@ -53,6 +54,8 @@ export default function FileTree() {
   const removeFile = useStore((s) => s.removeFile);
   const createFolder = useStore((s) => s.createFolder);
   const removeFolder = useStore((s) => s.removeFolder);
+  const tagFilter = useStore((s) => s.tagFilter);
+  const setTagFilter = useStore((s) => s.setTagFilter);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState('thoughts/');
   // 「创建笔记」：只问标题和去处，路径由 note.ts 生成
@@ -73,8 +76,16 @@ export default function FileTree() {
     return m;
   }, [changes]);
 
-  const { tree, total, hiddenCount, userDirs } = useMemo(() => {
+  const { tree, total, hiddenCount, userDirs, tagHits } = useMemo(() => {
     const all = Object.keys(files).sort((a, b) => a.localeCompare(b, 'zh'));
+    /*
+     * 按标签筛的时候整棵树都换掉：结果是**一列平铺的篇**，不再是目录树 ——
+     * 因为同一个标签下的几篇往往散在不同目录里，硬套回树里只会让人找不到。
+     * `null` = 没在筛；空数组 = 在筛但一个都没中（这也要显示，不然像没反应）。
+     */
+    const tagHits = tagFilter
+      ? all.filter((p) => typeof files[p] === 'string' && tagsOf(files[p]).includes(tagFilter))
+      : null;
     /*
      * 只在这里过滤 —— 同步用的 files 始终是全量，绝不能被这个规则碰到。
      *
@@ -93,8 +104,9 @@ export default function FileTree() {
       total: all.length,
       hiddenCount: all.length - visible.length,
       userDirs: extra,
+      tagHits,
     };
-  }, [files, showAll]);
+  }, [files, showAll, tagFilter]);
 
   const kindExt = NOTE_KINDS.find((k) => k.id === noteKind)?.ext ?? 'md';
   const notePreview = notePath(noteDir, noteTitle, undefined, kindExt);
@@ -315,6 +327,28 @@ export default function FileTree() {
         </button>
       </Section>
 
+      {/* 筛选中的时候，这条横幅是「你现在在看的是哪一小撮」的唯一说明 */}
+      {tagHits && (
+        <div
+          data-tag-filter
+          className="mx-2.5 mb-1.5 flex shrink-0 items-center gap-1.5 rounded-[8px] border border-craft-line bg-craft-soft px-2 py-1.5"
+        >
+          <Tag size={11} className="shrink-0 text-craft" />
+          <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-craft">
+            #{tagFilter}
+          </span>
+          <span className="shrink-0 text-[10.5px] text-ink-3">{tagHits.length} 篇</span>
+          <button
+            data-tag-clear
+            onClick={() => setTagFilter(null)}
+            title="退出筛选"
+            className="shrink-0 rounded-[5px] p-0.5 text-craft transition-colors hover:bg-craft/10"
+          >
+            <Close size={11} />
+          </button>
+        </div>
+      )}
+
       {foldering && (
         <div data-folder-form className="px-3 pb-2">
           <div className="flex items-center gap-1.5">
@@ -409,7 +443,7 @@ export default function FileTree() {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
-        {total === 0 && (
+        {!tagHits && total === 0 && (
           <div className="px-3 py-6 text-center">
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               还没有文件
@@ -421,7 +455,21 @@ export default function FileTree() {
           </div>
         )}
 
-        {total > 0 && hiddenCount === total && (
+        {tagHits && tagHits.length === 0 && (
+          <div data-tag-empty className="px-3 py-6 text-center">
+            <p className="text-[12.5px] leading-relaxed text-ink-3">
+              没有带 #{tagFilter} 的篇
+            </p>
+            <button
+              onClick={() => setTagFilter(null)}
+              className="mt-2 rounded-[8px] border border-line bg-surface px-2.5 py-[5px] text-[12px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              退出筛选
+            </button>
+          </div>
+        )}
+
+        {!tagHits && total > 0 && hiddenCount === total && (
           <div className="px-3 py-6 text-center">
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               这个仓库里没有文字文件
@@ -438,8 +486,14 @@ export default function FileTree() {
         )}
 
         <div className="space-y-[1px]">
-          {tree.files.filter((p) => !isFolderFile(p)).map((p) => renderFile(p, 0))}
-          {tree.dirs.map((d) => renderDir(d, 0))}
+          {tagHits ? (
+            tagHits.map((p) => renderFile(p, 0))
+          ) : (
+            <>
+              {tree.files.filter((p) => !isFolderFile(p)).map((p) => renderFile(p, 0))}
+              {tree.dirs.map((d) => renderDir(d, 0))}
+            </>
+          )}
         </div>
       </div>
 

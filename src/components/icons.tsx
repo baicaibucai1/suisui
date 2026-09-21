@@ -216,6 +216,22 @@ export const Link = (p: IconProps) => (
   </Svg>
 );
 
+/** 标签：一个带孔的牌子。正文里的 `#tag` 和筛选条上都用它 */
+export const Tag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8.6 2.4H3.1a.7.7 0 0 0-.7.7v5.5c0 .18.07.36.2.49l5.2 5.2a.69.69 0 0 0 .98 0l4.8-4.8a.69.69 0 0 0 0-.98L8.6 2.4Z" />
+    <circle cx="5.7" cy="5.7" r="1.1" />
+  </Svg>
+);
+
+/** 反向链接：一支拐回来的箭头 —— 「有人从那边指过来」 */
+export const Backlink = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 4.5 4.8 8.6 9 12.7" />
+    <path d="M4.8 8.6h4.9a3.3 3.3 0 0 1 0 6.6H8" />
+  </Svg>
+);
+
 export const ListBullet = (p: IconProps) => (
   <Svg {...p}>
     <path d="M6.2 4.2h7.2M6.2 8h7.2M6.2 11.8h7.2" />

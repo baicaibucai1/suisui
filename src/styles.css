@@ -372,6 +372,64 @@ body {
   transform: scale(0.9);
 }
 
+/* ---------- [[双链]] 与 #标签 ---------- */
+
+/*
+ * 这两个类不是写给用户看的装饰，是**点得动的记号**：
+ * 文件里存的还是干干净净的 `[[笔记]]` 纯文本，这里只是给那几个字套了层 span。
+ * 所以颜色必须和普通正文拉得开，但**不能跟 markdown 链接（a 标签）一模一样** ——
+ * 那是"跳到网页"，这是"跳到隔壁那篇"，混了就分不清自己点的是什么。
+ */
+.milkdown-wrap .milkdown .ProseMirror .su-wiki,
+.su-wiki {
+  color: var(--color-accent);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-accent-line);
+  text-decoration: none;
+}
+
+.milkdown-wrap .milkdown .ProseMirror .su-wiki:hover,
+.su-wiki:hover {
+  background: var(--color-accent-soft);
+  border-bottom-color: var(--color-accent);
+}
+
+/* 还没建的：虚线 + 退一档的灰。一眼看出"这个链接现在还点不开东西" */
+.milkdown-wrap .milkdown .ProseMirror .su-wiki-new,
+.su-wiki-new {
+  color: var(--color-ink-3);
+  border-bottom: 1px dashed var(--color-line-2);
+}
+
+.milkdown-wrap .milkdown .ProseMirror .su-tag,
+.su-tag {
+  color: var(--color-craft);
+  cursor: pointer;
+  border-bottom: 1px dotted var(--color-craft-line);
+}
+
+.milkdown-wrap .milkdown .ProseMirror .su-tag:hover,
+.su-tag:hover {
+  background: var(--color-craft-soft);
+}
+
+/* 跳到某个小节时闪一下那一行，否则"跳过去了"没有反馈 */
+@keyframes su-flash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  15%,
+  60% {
+    background: var(--color-accent-soft);
+  }
+}
+
+.su-flash {
+  animation: su-flash 1.4s ease-out;
+  border-radius: 4px;
+}
+
 /* ---------- 稿纸（.rich）的默认排版 ---------- */
 
 /*

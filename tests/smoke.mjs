@@ -175,6 +175,21 @@ const barAfter = (await page.textContent('header')).replace(/\s+/g, ' ').trim();
 console.log('  顶栏:', barAfter.slice(0, 80));
 ok('顶栏说「还没比对」', barAfter.includes('还没比对'));
 ok('顶栏不再说「与远端一致」', !barAfter.includes('与远端一致'));
+console.log(
+  '  光标诊断:',
+  JSON.stringify(
+    await page.evaluate(() => {
+      const el = document.querySelector('.milkdown .ProseMirror');
+      const sel = window.getSelection();
+      const node = sel?.rangeCount ? sel.getRangeAt(0).endContainer : null;
+      return {
+        tail: el?.innerHTML.slice(-140),
+        tag: node ? (node.nodeType === 1 ? node.tagName : node.parentElement?.tagName) : null,
+        current: window.__suisui.getState().current,
+      };
+    }),
+  ),
+);
 ok(
   '光标已进正文（不是停在标题里）',
   await page.evaluate(() => {
@@ -289,9 +304,11 @@ ok('重名自动加 -2', second === preview.replace(/\.md$/, '-2.md'), String(se
 
 step('清理：把这两篇本地删掉（没推送，远端不受影响）');
 await page.evaluate(() => {
+  // ⚠️ 别把日期写死：文件名里的日期是「跑测试那天」的，写死 09-21 到了第二天就删不掉，
+  // 于是这条断言在跨天之后莫名其妙变红（真踩过）。按标题片段匹配就行。
   const st = window.__suisui.getState();
-  for (const p of ['notes/2026-09-21-雨天-散步.md', 'notes/2026-09-21-雨天-散步-2.md']) {
-    if (p in st.files) st.removeFile(p);
+  for (const p of Object.keys(st.files)) {
+    if (p.includes('雨天-散步')) st.removeFile(p);
   }
 });
 await page.waitForTimeout(600);
