@@ -123,10 +123,35 @@ export async function readBlob(cfg: GhConfig, sha: string): Promise<string> {
   return res.text();
 }
 
-export async function createBlob(cfg: GhConfig, text: string): Promise<string> {
+/**
+ * 读单个 blob 的**字节**。附件（图片 / PDF）必须走这条 ——
+ * ⚠️ `res.text()` 会拿 UTF-8 去解二进制，解不出的字节变成 U+FFFD，
+ * 文件当场就毁了，而且不可逆（推上去会把远端那份也覆盖成坏的）。
+ */
+export async function readBlobBytes(cfg: GhConfig, sha: string): Promise<Uint8Array> {
+  const res = await doFetch(`${API}/repos/${cfg.owner}/${cfg.repo}/git/blobs/${sha}`, {
+    headers: {
+      Accept: 'application/vnd.github.raw',
+      Authorization: `Bearer ${cfg.token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (!res.ok) throw new GhError(res.status, `${res.status} 读取附件 blob 失败`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
+ * 建一个 blob。`encoding: 'base64'` 是附件专用 —— GitHub 接收 base64 内容，
+ * 存进仓库的是**解码后的原始字节**，所以它的 sha 和本地按字节算的能对上。
+ */
+export async function createBlob(
+  cfg: GhConfig,
+  content: string,
+  encoding: 'utf-8' | 'base64' = 'utf-8',
+): Promise<string> {
   const data = await ghFetch<{ sha: string }>(cfg, `/repos/${cfg.owner}/${cfg.repo}/git/blobs`, {
     method: 'POST',
-    body: JSON.stringify({ content: text, encoding: 'utf-8' }),
+    body: JSON.stringify({ content, encoding }),
   });
   return data.sha;
 }

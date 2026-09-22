@@ -12,6 +12,7 @@
  */
 
 import { blobSha, normalizeText } from '../gh';
+import { bytesSha, bytesToBase64, isBinaryPath } from '../binary';
 import { RemoteError, type Remote, type RemoteChange, type RemoteEntry } from './types';
 
 export type OneDriveConfig = {
@@ -127,6 +128,8 @@ export function onedriveRemote(cfg: OneDriveConfig): Remote {
   };
 
   let cache: Map<string, string> | null = null;
+  /** 附件的 base64 缓存（list() 为了算指纹已经下过一遍） */
+  let binCache: Map<string, string> | null = null;
 
   const remote: Remote = {
     id: 'onedrive',
@@ -134,15 +137,24 @@ export function onedriveRemote(cfg: OneDriveConfig): Remote {
 
     async list(): Promise<RemoteEntry[]> {
       cache = null;
+      binCache = null;
       const paths = (await walk()).map(rel).filter(Boolean);
       const next = new Map<string, string>();
+      const bins = new Map<string, string>();
       const out: RemoteEntry[] = [];
       for (const p of paths) {
+        if (isBinaryPath(p)) {
+          const bytes = await remote.readBytes(p);
+          bins.set(p, bytesToBase64(bytes));
+          out.push({ path: p, sha: await bytesSha(bytes) });
+          continue;
+        }
         const text = normalizeText(await remote.read(p));
         next.set(p, text);
         out.push({ path: p, sha: await blobSha(text) });
       }
       cache = next;
+      binCache = bins;
       return out;
     },
 
@@ -157,15 +169,38 @@ export function onedriveRemote(cfg: OneDriveConfig): Remote {
       return normalizeText(await res.text());
     },
 
+    async readBytes(path: string): Promise<Uint8Array> {
+      const hit = binCache?.get(path);
+      if (hit !== undefined) {
+        const bin = atob(hit);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+      }
+      const res = await fetch(`${API}/me/drive/${graphPath(base, path)}/content`, {
+        headers,
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new RemoteError('onedrive', `读附件 ${path} 失败（${res.status}）`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+
     async write(changes: RemoteChange[], _message: string): Promise<void> {
       for (const c of changes) {
         if (c.content === null) continue;
         const i = c.path.lastIndexOf('/');
         if (i >= 0) await ensureDir(c.path.slice(0, i));
+        const binary = c.encoding === 'base64';
+        const body = binary
+          ? Uint8Array.from(atob(c.content), (ch) => ch.charCodeAt(0))
+          : normalizeText(c.content);
         const res = await fetch(`${API}/me/drive/${graphPath(base, c.path)}/content`, {
           method: 'PUT',
-          headers: { ...headers, 'Content-Type': 'text/plain; charset=utf-8' },
-          body: normalizeText(c.content),
+          headers: {
+            ...headers,
+            'Content-Type': binary ? 'application/octet-stream' : 'text/plain; charset=utf-8',
+          },
+          body,
         });
         if (!res.ok) await json(res, `写 ${c.path}`);
       }
@@ -179,6 +214,7 @@ export function onedriveRemote(cfg: OneDriveConfig): Remote {
         if (!res.ok && res.status !== 404) await json(res, `删 ${c.path}`);
       }
       cache = null;
+      binCache = null;
     },
   };
 

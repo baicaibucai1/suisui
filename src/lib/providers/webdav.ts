@@ -13,6 +13,7 @@
  */
 
 import { blobSha, normalizeText } from '../gh';
+import { base64ToBytes, bytesSha, bytesToBase64, isBinaryPath } from '../binary';
 import { parsePropfind } from './davxml';
 import { RemoteError, type Remote, type RemoteChange, type RemoteEntry } from './types';
 
@@ -29,9 +30,17 @@ export type DavRequest = {
   url: string;
   headers: Record<string, string>;
   body?: string;
+  /**
+   * 这一趟是**二进制**。置 true 时响应体走 `base64` 字段回来（不进 `text`），
+   * 请求体则走 `bodyBase64`。
+   * 为什么非要绕一道：transport 是一根 JSON 管道（前端 ⇄ Rust），
+   * 字符串过不去字节 —— 而 `res.text()` 解二进制会把它解坏（见 lib/binary.ts）。
+   */
+  binary?: boolean;
+  bodyBase64?: string;
 };
 
-export type DavResponse = { status: number; text: string };
+export type DavResponse = { status: number; text: string; base64?: string };
 
 /** 一次 WebDAV 请求。桌面端走 Rust，浏览器里没有实现 —— 见文件头。 */
 export type DavTransport = (req: DavRequest) => Promise<DavResponse>;
@@ -68,8 +77,9 @@ export function webdavRemote(cfg: DavConfig, transport: DavTransport): Remote {
     }
   };
 
-  /** 内容缓存：list() 为了算指纹已经下过一遍，read() 别再下一次 */
+  /** 内容缓存：list() 为了算指纹已经下过一遍，read() 别再下一次。附件另存一份（base64）。 */
   let cache: Map<string, string> | null = null;
+  let binCache: Map<string, string> | null = null;
 
   /** 逐级建目录。已存在会回 405，忽略即可 —— 幂等才敢在每次写之前无条件调 */
   const ensureDir = async (dir: string) => {
@@ -98,15 +108,25 @@ export function webdavRemote(cfg: DavConfig, transport: DavTransport): Remote {
       }
       // ⚠️ 先把旧缓存清掉：下面 read() 会优先用缓存，留着旧值就是拿上次的正文当这次的
       cache = null;
+      binCache = null;
       const items = parsePropfind(res.text, root).filter((i) => !i.dir);
       const next = new Map<string, string>();
+      const bins = new Map<string, string>();
       const out: RemoteEntry[] = [];
       for (const it of items) {
+        // 附件必须按字节读（指纹也是按字节算的），走文本那条路会把它解坏
+        if (isBinaryPath(it.path)) {
+          const bytes = await remote.readBytes(it.path);
+          bins.set(it.path, bytesToBase64(bytes));
+          out.push({ path: it.path, sha: await bytesSha(bytes) });
+          continue;
+        }
         const text = normalizeText(await remote.read(it.path));
         next.set(it.path, text);
         out.push({ path: it.path, sha: await blobSha(text) });
       }
       cache = next;
+      binCache = bins;
       return out;
     },
 
@@ -118,17 +138,29 @@ export function webdavRemote(cfg: DavConfig, transport: DavTransport): Remote {
       return normalizeText(res.text);
     },
 
+    async readBytes(path: string): Promise<Uint8Array> {
+      const hit = binCache?.get(path);
+      if (hit !== undefined) return base64ToBytes(hit);
+      const res = await call({ method: 'GET', url: href(path), headers: {}, binary: true });
+      if (res.status >= 400) throw new RemoteError('nutstore', `读附件 ${path} 失败（${res.status}）`);
+      if (!res.base64) throw new RemoteError('nutstore', `读附件 ${path} 失败：通道没返回二进制内容`);
+      return base64ToBytes(res.base64);
+    },
+
     async write(changes: RemoteChange[], _message: string): Promise<void> {
       // 网盘没有事务：先写后删，中途挂了也只是"没删干净"，下轮比对会接着补
       for (const c of changes) {
         if (c.content === null) continue;
         const i = c.path.lastIndexOf('/');
         if (i >= 0) await ensureDir(c.path.slice(0, i));
+        const binary = c.encoding === 'base64';
         const res = await call({
           method: 'PUT',
           url: href(c.path),
-          headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
-          body: normalizeText(c.content),
+          headers: { 'Content-Type': binary ? 'application/octet-stream' : 'text/markdown; charset=utf-8' },
+          body: binary ? undefined : normalizeText(c.content),
+          bodyBase64: binary ? c.content : undefined,
+          binary,
         });
         if (res.status >= 400) throw new RemoteError('nutstore', `写 ${c.path} 失败（${res.status}）`);
       }
@@ -141,6 +173,7 @@ export function webdavRemote(cfg: DavConfig, transport: DavTransport): Remote {
         }
       }
       cache = null;
+      binCache = null;
     },
   };
 

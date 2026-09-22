@@ -6,6 +6,7 @@ import SideDock from './components/SideDock';
 import { EditorLoading, EmptyState } from './components/EmptyState';
 import StatusBar from './components/StatusBar';
 import { useStore } from './lib/store';
+import { isBinaryPath } from './lib/binary';
 
 /*
  * 编辑器**按需加载**。它带着 Milkdown / Crepe / KaTeX，压缩后 1.4MB ——
@@ -15,6 +16,9 @@ import { useStore } from './lib/store';
  * ⚠️ 别把 EditorPane 改成静态 import —— 首屏包体会当场涨回 1.7MB。
  */
 const EditorPane = lazy(() => import('./components/EditorPane'));
+// 附件预览（图片 / PDF）。它自己很轻，里面的 pdf.js 是三级懒加载 ——
+// 打开一张图不该为"也许以后要看 PDF"付 1MB
+const PreviewPane = lazy(() => import('./components/PreviewPane'));
 // 设置面板同理：只有点开齿轮的人才需要它
 const SettingsSheet = lazy(() => import('./components/SettingsSheet'));
 
@@ -87,7 +91,7 @@ export default function App() {
           */}
           {current ? (
             <Suspense fallback={<EditorLoading path={current} />}>
-              <EditorPane />
+              {isBinaryPath(current) ? <PreviewPane /> : <EditorPane />}
             </Suspense>
           ) : (
             <EmptyState />

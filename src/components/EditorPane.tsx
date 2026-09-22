@@ -22,8 +22,10 @@ import { toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { useStore } from '../lib/store';
 import { EMPTY_ACTIVE, activeFromText, applyTool, linkAt } from '../lib/mdkit';
 import type { Active, ToolId } from '../lib/mdkit';
-import { dirOf, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
+import { dirOf, resolveFile, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
+import { base64ToBytes, blobOf, isImagePath, mimeOf } from '../lib/binary';
 import { insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
+import type { EmbedInfo } from '../lib/pm-links';
 import type { WikiQuery } from '../lib/pm-links';
 import { isRichPath } from '../lib/rich';
 import WikiHints from './WikiHints';
@@ -138,6 +140,14 @@ export default function EditorPane() {
    */
   const pathsRef = useRef<string[]>([]);
   const dirRef = useRef('');
+  /** 附件原文（base64）的最新值 —— 插件只认 ref，读到的才是当下的 */
+  const filesRef = useRef<Record<string, string>>({});
+  /*
+   * 正文里嵌的那些图，blob URL 按路径缓存。
+   * ⚠️ 必须在卸载时全部 revoke：object URL 不回收，整张图会一直挂在内存里，
+   * 切几篇带图的笔记就能吃掉几百 MB。
+   */
+  const embedCache = useRef(new Map<string, EmbedInfo>());
   /** focusTick 的最新值 —— 编辑器创建那段异步代码要读它，闭包里的会过期 */
   const focusTickRef = useRef(0);
   const hintRef = useRef<WikiQuery | null>(null);
@@ -162,6 +172,80 @@ export default function EditorPane() {
   pathsRef.current = mdPaths;
   dirRef.current = dirOf(current ?? '');
   focusTickRef.current = focusTick;
+  filesRef.current = files;
+
+  /*
+   * `![[附件]]` 要画什么。
+   * 返回的 url 是 **blob URL** 而不是 data URL：一张 5MB 的图塞进 src 属性，
+   * DOM 里就要多出 6MB 的字符串，DevTools / 内存都扛不住。
+   */
+  const embedFor = useCallback(
+    (target: string): EmbedInfo | null => {
+      // ⚠️ 走 resolveFile 不是 resolveWiki：附件是**带着后缀**被引用的（![[dot.png]]），
+      // 而 resolveWiki 按笔记的规矩会先把后缀剥掉，那样永远找不到
+      const path = resolveFile(target, Object.keys(filesRef.current), dirRef.current);
+      if (!path) return null;
+      // 只缓存造过 blob URL 的图片：卡片那种没有 URL 可收，缓存它反而会让
+      // 「附件后来上传了」这件事看不出来
+      const cached = embedCache.current.get(path);
+      if (cached) return cached;
+      const stored = filesRef.current[path];
+      if (typeof stored !== 'string') return null;
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      // 笔记本身也能被嵌（Obsidian 的规矩）—— 那就画成一张卡片，点开是那篇
+      if (!isImagePath(path)) return { url: '', kind: 'file', name };
+      try {
+        const bytes = base64ToBytes(stored);
+        const url = URL.createObjectURL(blobOf(bytes, mimeOf(path)));
+        const info: EmbedInfo = { url, kind: 'image', name };
+        embedCache.current.set(path, info);
+        return info;
+      } catch {
+        return { url: '', kind: 'file', name };
+      }
+    },
+    [],
+  );
+
+  /*
+   * `![](./图.png)` 这种标准 markdown 图片：Milkdown 会老老实实渲成
+   * `<img src="./图.png">`，而应用里没有这个 HTTP 路径 —— 图是裂的。
+   * 这里把 src 换成库里那份内容的 blob URL（和 `![[图.png]]` 走同一个缓存）。
+   */
+  const patchMdImages = useCallback(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    for (const el of Array.from(host.querySelectorAll('img'))) {
+      if (!(el instanceof HTMLImageElement)) continue;
+      // 自己嵌的那批（带 data-embed-img）已经处理过；处理过的打过标记
+      if (el.dataset.embedImg || el.dataset.suisuiSrc) continue;
+      const raw = el.getAttribute('src') ?? '';
+      if (!raw || /^(https?:|data:|blob:)/i.test(raw)) continue;
+      const rel = decodeURIComponent(raw).replace(/^\.?\//, '').split('?')[0];
+      const path = resolveFile(rel, Object.keys(filesRef.current), dirRef.current);
+      if (!path) continue;
+      const info = embedFor(path);
+      if (info?.url) {
+        el.src = info.url;
+        el.dataset.suisuiSrc = path;
+      }
+    }
+  }, [embedFor]);
+
+  /** 点非图片的嵌入卡片 → 打开那篇 / 那个附件 */
+  const openEmbed = useCallback((target: string) => {
+    const path = resolveFile(target, Object.keys(filesRef.current), dirRef.current);
+    if (path) useStore.getState().setCurrent(path);
+  }, []);
+
+  // 卸载时把造过的 blob URL 全收回去
+  useEffect(() => {
+    const cache = embedCache.current;
+    return () => {
+      for (const info of cache.values()) if (info.url) URL.revokeObjectURL(info.url);
+      cache.clear();
+    };
+  }, []);
 
   /** 补全候选。查询词为空时给最近几篇，最后永远挂着「创建」那一项。 */
   const hintItems = useMemo<HintItem[]>(() => {
@@ -317,6 +401,8 @@ export default function EditorPane() {
             onQuery,
             onKey: onHintKey,
             open: () => hintRef.current !== null,
+            embed: embedFor,
+            openEmbed,
           }),
         );
         await crepe.create();
@@ -329,6 +415,8 @@ export default function EditorPane() {
         last = crepe.getMarkdown();
         ready = true;
         setFail(null);
+        // 正文里的 `![](./图.png)` 要换成 blob URL，否则是个裂图
+        patchMdImages();
         /*
          * 「创建笔记」之后把光标送进正文 —— **就在此刻处理**，不要另外起轮询去等：
          * 仓库一大，重建一个 Crepe 实例要一秒多，轮询等到的时刻比这晚得多，
@@ -437,7 +525,9 @@ export default function EditorPane() {
     } catch {
       /* 编辑器还没起来，跳过 */
     }
-  }, [files, mode]);
+    // 附件可能刚同步下来：嵌着的图和 `![](…)` 都要重新取一次地址
+    patchMdImages();
+  }, [files, mode, patchMdImages]);
 
   /*
    * 正文里的 `[[链接]]` / `#标签` 是可点的 —— 但**不是单击就跳**。

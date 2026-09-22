@@ -25,15 +25,29 @@ export type RemoteEntry = {
 };
 
 /** 一批待落远端的改动。`content === null` 表示删除这个路径。 */
-export type RemoteChange = { path: string; content: string | null };
+export type RemoteChange = {
+  path: string;
+  content: string | null;
+  /**
+   * 内容的编码。**附件走 `base64`** —— 这类后端收到的字符串是 base64，
+   * 落到仓库里的是解码后的原始字节（指纹因此才对得上）。
+   * 不写就是 `'utf-8'`，也就是"这就是文件原文"。
+   */
+  encoding?: 'utf-8' | 'base64';
+};
 
 export type Remote = {
   readonly id: ProviderId;
   readonly label: string;
   /** 列出远端所有文件。**目录不进列表** —— 目录靠路径里的 `/` 表达。 */
   list(): Promise<RemoteEntry[]>;
-  /** 读一个文件的原文（已归一化为 LF 无 BOM）。 */
+  /** 读一个文件的原文（已归一化为 LF 无 BOM）。**别用它读附件** —— 见 readBytes。 */
   read(path: string): Promise<string>;
+  /**
+   * 读一个文件的**原始字节**（附件专用）。
+   * ⚠️ 这一条不能省：浏览器/后端的文本解码会把二进制解坏（见 lib/binary.ts 第 3 条）。
+   */
+  readBytes(path: string): Promise<Uint8Array>;
   /**
    * 落一批改动。
    * GitHub 是一个 commit（原子）；网盘没有事务，只能逐个 PUT / DELETE，

@@ -7,9 +7,31 @@
 // 网盘没有事务（见 Remote.write 的注释），但比对与冲突规则完全一样。
 
 import { blobSha, normalizeText } from './gh';
+import { bytesToBase64, isBinaryPath, storedSha } from './binary';
 import { decide } from './decide';
 import type { Change } from './decide';
 import type { Remote, RemoteChange } from './providers/types';
+
+/**
+ * 本地一份文件的指纹。**附件按解码后的字节算，文字按文本算** ——
+ * 远端（GitHub）算的是文件字节的 blob sha，附件若按 base64 字符串算就永远对不上，
+ * 结果就是每次同步都判成"本地改了"，附件被无休止地来回推。
+ */
+async function localSha(path: string, stored: string): Promise<string | undefined> {
+  if (isBinaryPath(path)) {
+    const sha = await storedSha(stored);
+    // base64 坏了（比如被人手改过）时退回按字符串算 —— 至少不会让同步整个崩掉，
+    // 只会判成"本地改了"，下一轮推上去把它修好
+    return sha ?? (await blobSha(stored));
+  }
+  return blobSha(normalizeText(stored));
+}
+
+/** 从远端拿一份文件，返回要存进 `files` 的形态（附件是 base64）。 */
+async function pullOne(remote: Remote, path: string): Promise<string> {
+  if (isBinaryPath(path)) return bytesToBase64(await remote.readBytes(path));
+  return normalizeText(await remote.read(path));
+}
 
 export type FileMap = Record<string, string>;
 export type Snapshot = Record<string, string>;
@@ -54,8 +76,8 @@ export async function planSync(remote: Remote, files: FileMap, snapshot: Snapsho
   const paths = new Set<string>([...Object.keys(files), ...Object.keys(snapshot), ...Object.keys(remoteMap)]);
   const changes: Change[] = [];
   for (const path of paths) {
-    const localSha = path in files ? await blobSha(normalizeText(files[path] ?? '')) : undefined;
-    const kind = decide(localSha, snapshot[path], remoteMap[path]);
+    const sha = path in files ? await localSha(path, files[path] ?? '') : undefined;
+    const kind = decide(sha, snapshot[path], remoteMap[path]);
     if (kind) changes.push({ kind, path });
   }
 
@@ -106,7 +128,7 @@ export async function syncOnce(
   for (const c of plan.changes) {
     if (c.kind === 'pull-new' || c.kind === 'pull-mod') {
       if (!(c.path in plan.remote)) continue;
-      next[c.path] = normalizeText(await remote.read(c.path));
+      next[c.path] = await pullOne(remote, c.path);
       stats.pulled += 1;
       log.push(`↓ ${c.path}`);
     } else if (c.kind === 'pull-del') {
@@ -121,7 +143,7 @@ export async function syncOnce(
   const conflictOriginals: string[] = [];
   for (const c of plan.changes) {
     if (c.kind !== 'conflict') continue;
-    const remoteText = c.path in plan.remote ? normalizeText(await remote.read(c.path)) : '';
+    const remoteText = c.path in plan.remote ? await pullOne(remote, c.path) : '';
     const copy = conflictPath(c.path, taken);
     taken.add(copy);
     next[copy] = remoteText;
@@ -145,16 +167,21 @@ export async function syncOnce(
       stats.pushed += 1;
       log.push(`↑ 删除 ${c.path}`);
     } else if (c.kind === 'push-new' || c.kind === 'push-mod') {
-      const content = normalizeText(next[c.path] ?? '');
+      // 附件原样发出去（它已经是 base64，且绝不能过 normalizeText）
+      const content = isBinaryPath(c.path) ? (next[c.path] ?? '') : normalizeText(next[c.path] ?? '');
       next[c.path] = content;
-      writes.push({ path: c.path, content });
+      writes.push({ path: c.path, content, encoding: isBinaryPath(c.path) ? 'base64' : 'utf-8' });
       pushPaths.push(c.path);
       stats.pushed += 1;
       log.push(`↑ ${c.path}`);
     }
   }
   for (const copy of copies) {
-    writes.push({ path: copy, content: normalizeText(next[copy] ?? '') });
+    writes.push({
+      path: copy,
+      content: next[copy] ?? '',
+      encoding: isBinaryPath(copy) ? 'base64' : 'utf-8',
+    });
     pushPaths.push(copy);
     log.push(`↑ 冲突副本 ${copy}`);
   }

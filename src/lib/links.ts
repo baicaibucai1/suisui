@@ -43,6 +43,21 @@ export type TagHit = {
 const WIKI_RE = /\[\[([^[\]\n]+?)\]\]/g;
 
 /**
+ * `![[附件]]` —— **嵌入**（把那张图直接画在正文里）。
+ * 同样只是纯文本：多出来的那个叹号在 markdown 里也没有语法含义。
+ */
+const EMBED_RE = /!\[\[([^[\]\n]+?)\]\]/g;
+
+export type EmbedHit = {
+  raw: string;
+  /** 指向的名字（`|` 后面的显示文字不算） */
+  target: string;
+  /** 在正文里的字符区间 [from, to)，**含那个叹号** */
+  from: number;
+  to: number;
+};
+
+/**
  * `#标签`。
  *
  * - 前面（`(?<!...)`）不能是文字、数字或 `#`：挡掉 `http://a#片段`、
@@ -91,7 +106,27 @@ export function parseWiki(text: string): WikiLink[] {
     const { target, heading, display } = splitWiki(m[1]);
     if (!target) continue;
     const from = m.index ?? 0;
+    // `![[图.png]]` 里那截也是 `[[...]]`，但它是嵌入 —— 不能再当链接画一遍
+    if (from > 0 && src[from - 1] === '!') continue;
     out.push({ raw: m[0], target, heading, display, from, to: from + m[0].length });
+  }
+  return out;
+}
+
+/**
+ * 正文里的 `![[附件]]`。
+ *
+ * 和 `parseWiki` 是**互斥**的：`![[a.png]]` 里那截 `[[a.png]]` 本身也符合链接的样子，
+ * 但它前面有个叹号 —— 那是嵌入，不能再被当链接画一遍（否则一段字既是图又是链接）。
+ */
+export function parseEmbed(text: string): EmbedHit[] {
+  const src = text.includes('`') ? stripCode(text) : text;
+  const out: EmbedHit[] = [];
+  for (const m of src.matchAll(EMBED_RE)) {
+    const { target } = splitWiki(m[1]);
+    if (!target) continue;
+    const from = m.index ?? 0;
+    out.push({ raw: m[0], target, from, to: from + m[0].length });
   }
   return out;
 }
@@ -99,9 +134,13 @@ export function parseWiki(text: string): WikiLink[] {
 export function parseTags(text: string): TagHit[] {
   const src = text.includes('`') ? stripCode(text) : text;
   const out: TagHit[] = [];
-  // # 后面可能紧跟链接，链接里的 #小节 不该被算成标签 —— 先圈出链接区间
+  // # 后面可能紧跟链接，链接里的 #小节 不该被算成标签 —— 先圈出链接 / 嵌入区间
   const spans: [number, number][] = [];
   for (const m of src.matchAll(WIKI_RE)) {
+    const from = m.index ?? 0;
+    spans.push([from, from + m[0].length]);
+  }
+  for (const m of src.matchAll(EMBED_RE)) {
     const from = m.index ?? 0;
     spans.push([from, from + m[0].length]);
   }
@@ -185,6 +224,32 @@ export function resolveWiki(target: string, paths: string[], preferDir = ''): st
     hit((p) => norm(noteNameOf(p))) ??
     hit((p) => norm(titleOf(p)))
   );
+}
+
+/**
+ * 名字 → **任意文件**的路径（`![[图.png]]` / `![](图.png)` 用）。
+ *
+ * 为什么不给 `resolveWiki` 加一档了事：那一套是给**笔记**用的，它会把后缀剥掉
+ * （`[[开张]]` 要能指到 `2026-09-21-开张.md`）。而附件恰恰相反 ——
+ * 人写 `![[dot.png]]` 时**带着后缀**，剥掉它就找不到了。
+ * 所以这里按**全名（含后缀）**匹配：全路径 → 同目录优先 → 全库同名。
+ */
+export function resolveFile(target: string, paths: string[], preferDir = ''): string | null {
+  const t = target.trim().toLowerCase().replace(/^\.?\//, '');
+  if (!t) return null;
+  const lower = (p: string) => p.toLowerCase();
+
+  const exact = paths.find((p) => lower(p) === t);
+  if (exact) return exact;
+
+  const all = paths.filter((p) => {
+    const l = lower(p);
+    return l === t || l.endsWith('/' + t);
+  });
+  if (all.length === 0) return null;
+  if (all.length === 1) return all[0];
+  const near = all.find((p) => dirOf(p) === preferDir);
+  return near ?? all[0];
 }
 
 /** 一篇里所有出链，附带上「指没指到」—— `path` 为 null 就是那篇还不存在。 */

@@ -24,7 +24,14 @@ if ('__TAURI_INTERNALS__' in window) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const { setDavTransport } = await import('./lib/providers');
-      setDavTransport((req) => invoke('dav_request', { ...req }) as Promise<{ status: number; text: string }>);
+      setDavTransport(
+        (req) =>
+          invoke('dav_request', { ...req }) as Promise<{
+            status: number;
+            text: string;
+            base64?: string;
+          }>,
+      );
     } catch {
       // 注册不上就退化成"坚果云不可用"，别把整个应用拖挂
     }

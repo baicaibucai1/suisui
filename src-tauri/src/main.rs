@@ -19,6 +19,66 @@ use std::collections::HashMap;
 struct DavReply {
     status: u16,
     text: String,
+    /// 只在 `binary` 那趟才有：响应体的 base64。
+    /// 为什么不直接塞进 text —— 那是一根 UTF-8 字符串管道，二进制过它会变成 U+FFFD，
+    /// 附件当场就毁了（见前端 lib/binary.ts）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base64: Option<String>,
+}
+
+/*
+ * 下面这两个 base64 编解码是手写的：只为这一条通道用，加一个 crate 不值当
+ * （而且离线机器上拉 crates.io 未必拉得到）。
+ */
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn b64_encode(input: &[u8]) -> String {
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(B64[((n >> 18) & 63) as usize] as char);
+        out.push(B64[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { B64[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { B64[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn b64_val(c: u8) -> Result<u32, String> {
+    match c {
+        b'A'..=b'Z' => Ok((c - b'A') as u32),
+        b'a'..=b'z' => Ok((c - b'a') as u32 + 26),
+        b'0'..=b'9' => Ok((c - b'0') as u32 + 52),
+        b'+' => Ok(62),
+        b'/' => Ok(63),
+        _ => Err(format!("不是 base64 字符：{}", c as char)),
+    }
+}
+
+fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
+    let s: Vec<u8> = input
+        .bytes()
+        // 空格和换行是手工编辑留下的，'=' 是补位，都不是数据
+        .filter(|b| !b.is_ascii_whitespace() && *b != b'=')
+        .collect();
+    let mut out: Vec<u8> = Vec::with_capacity(s.len() / 4 * 3 + 3);
+    for chunk in s.chunks(4) {
+        let mut n = 0u32;
+        for (i, &c) in chunk.iter().enumerate() {
+            n |= b64_val(c)? << (18 - 6 * i);
+        }
+        out.push((n >> 16) as u8);
+        if chunk.len() > 2 {
+            out.push((n >> 8) as u8);
+        }
+        if chunk.len() > 3 {
+            out.push(n as u8);
+        }
+    }
+    Ok(out)
 }
 
 /// 一次 WebDAV 请求。出错就把原因说清楚 —— 前端那句"连不上"必须能指导行动。
@@ -28,6 +88,11 @@ async fn dav_request(
     url: String,
     headers: HashMap<String, String>,
     body: Option<String>,
+    // 这一趟是附件：请求体走 body_base64，响应体走 DavReply::base64。
+    // ⚠️ 这里只能用普通注释：Rust 的**函数参数上不允许写 /** 文档注释 */，
+    // 只有 cfg / allow 那几个内置属性可以挂在参数上。
+    binary: Option<bool>,
+    body_base64: Option<String>,
 ) -> Result<DavReply, String> {
     let verb = method
         .parse::<reqwest::Method>()
@@ -43,7 +108,12 @@ async fn dav_request(
     for (k, v) in headers {
         req = req.header(k, v);
     }
-    if let Some(b) = body {
+    let is_binary = binary.unwrap_or(false);
+    if is_binary {
+        if let Some(b64) = body_base64 {
+            req = req.body(b64_decode(&b64).map_err(|e| format!("附件内容不是合法 base64：{e}"))?);
+        }
+    } else if let Some(b) = body {
         req = req.body(b);
     }
 
@@ -59,8 +129,16 @@ async fn dav_request(
     })?;
 
     let status = res.status().as_u16();
+    if is_binary {
+        let bytes = res.bytes().await.unwrap_or_default();
+        return Ok(DavReply {
+            status,
+            text: String::new(),
+            base64: Some(b64_encode(&bytes)),
+        });
+    }
     let text = res.text().await.unwrap_or_default();
-    Ok(DavReply { status, text })
+    Ok(DavReply { status, text, base64: None })
 }
 
 fn main() {

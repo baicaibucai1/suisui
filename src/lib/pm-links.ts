@@ -17,9 +17,19 @@ import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { parseTags, parseWiki, resolveWiki } from './links';
+import { parseEmbed, parseTags, parseWiki, resolveWiki } from './links';
 
 export const wikiKey = new PluginKey('suisui-wiki');
+
+/** 嵌入要画成什么 —— 由调用方（编辑器）查库得到，插件自己不认识 files。 */
+export type EmbedInfo = {
+  /** 图片就给一个能直接塞进 `<img src>` 的地址（blob URL）；非图片给空串 */
+  url: string;
+  /** `image` = 直接画出来；`file` = 画成一张卡片，点一下打开预览 */
+  kind: 'image' | 'file';
+  /** 卡片上显示的那个名字 */
+  name: string;
+};
 
 /** 光标停在一个还没闭合的 `[[` 后面 —— 这时该弹补全。 */
 const OPEN_RE = /\[\[([^[\]\n]*)$/;
@@ -45,6 +55,14 @@ export type WikiOpts = {
   onKey: (e: KeyboardEvent) => boolean;
   /** 浮层当前是否开着 */
   open: () => boolean;
+  /**
+   * `![[附件]]` 要画的东西。**每次重算装饰时都会问一次** ——
+   * 图片刚传进来、或者刚同步下来，下一次重绘就会补上（配合 `refreshWiki`）。
+   * 返回 null = 库里还没有这个文件，画成"还没上传"的占位。
+   */
+  embed?: (target: string) => EmbedInfo | null;
+  /** 点了非图片的嵌入卡片（比如 PDF） */
+  openEmbed?: (target: string) => void;
 };
 
 /** 光标处是不是正在写一个 `[[`。不是就返回 null。 */
@@ -60,6 +78,50 @@ function readQuery(state: EditorState): { text: string; from: number } | null {
   return { text: m[1], from: $from.pos - m[0].length };
 }
 
+/**
+ * `![[附件]]` 的那个 widget。
+ *
+ * ⚠️ 必须是**块级包一层**再放 img：裸 img 直接当 widget 时，ProseMirror 会把它
+ * 当成行内内容去排版，换行和光标行为都会怪。外面套一个 span/block 就稳了。
+ */
+function embedWidget(target: string, info: EmbedInfo | null, open: ((t: string) => void) | undefined) {
+  const box = document.createElement('span');
+  box.className = 'su-embed';
+  box.dataset.embed = target;
+
+  if (info?.kind === 'image' && info.url) {
+    const img = document.createElement('img');
+    img.className = 'su-embed-img';
+    img.src = info.url;
+    img.alt = info.name || target;
+    img.dataset.embedImg = target;
+    box.appendChild(img);
+    return box;
+  }
+
+  if (info) {
+    box.classList.add('su-embed-file');
+    const icon = document.createElement('span');
+    icon.className = 'su-embed-icon';
+    icon.textContent = '▣';
+    const name = document.createElement('span');
+    name.textContent = info.name || target;
+    box.append(icon, name);
+    // 点卡片 = 打开那篇 / 那个附件。编辑态下它不是一个可编辑区域，点击得自己接
+    box.addEventListener('click', (e) => {
+      e.preventDefault();
+      open?.(target);
+    });
+    return box;
+  }
+
+  // 库里没有这个文件：画一条虚线占位，别让人以为"嵌了个寂寞"
+  box.classList.add('su-embed-miss');
+  box.dataset.embedMiss = target;
+  box.textContent = `还没上传：${target}`;
+  return box;
+}
+
 function build(state: EditorState, opts: WikiOpts): DecorationSet {
   const paths = opts.paths();
   const dir = opts.dir();
@@ -68,6 +130,27 @@ function build(state: EditorState, opts: WikiOpts): DecorationSet {
   state.doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
     const text = node.text;
+
+    /*
+     * 嵌入：`![[a.png]]`。两段装饰配合 ——
+     *   ① 把那几个字本身藏起来（`.su-embed-src { display: none }`，样式在 styles.css）；
+     *   ② 在同一个位置插一个 widget，把图画出来。
+     * 文档树一个字没动，存进文件的还是 `![[a.png]]`（见 links.ts 第 1 条）。
+     */
+    for (const e of parseEmbed(text)) {
+      const hit = resolveWiki(e.target, paths, dir);
+      const info = opts.embed?.(e.target) ?? null;
+      decos.push(Decoration.inline(pos + e.from, pos + e.to, { class: 'su-embed-src' }));
+      decos.push(
+        Decoration.widget(
+          pos + e.from,
+          () => embedWidget(e.target, info, opts.openEmbed),
+          // key 里带上 url：附件内容变了（刚同步下来）时 PM 才会重画，不然复用旧 DOM
+          { key: `embed:${e.target}:${info?.url ?? 'none'}:${hit ? 1 : 0}`, side: -1 },
+        ),
+      );
+    }
+
     for (const l of parseWiki(text)) {
       const hit = resolveWiki(l.target, paths, dir);
       const attrs: Record<string, string> = {

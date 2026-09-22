@@ -430,6 +430,70 @@ body {
   border-radius: 4px;
 }
 
+/* ---------- 嵌入附件 ![[图.png]] ---------- */
+
+/*
+ * `![[附件]]` 是靠**两段装饰**画出来的：
+ *   ① `.su-embed-src` 把那几个字本身藏掉（文档里它还在，只是不显示）；
+ *   ② 同一个位置插一个 widget，把图 / 卡片画出来。
+ * 所以这两个类是一对，缺一个就会变成"一堆字挨着一张图"。
+ */
+.milkdown-wrap .milkdown .ProseMirror .su-embed-src,
+.su-embed-src {
+  display: none;
+}
+
+.su-embed {
+  display: block;
+  margin: 0.6em 0;
+}
+
+.su-embed-img {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--color-line);
+  background: #fff;
+}
+
+/* 嵌的不是图（PDF / 另一篇笔记）：画一张能点的卡片 */
+.su-embed-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface-2);
+  color: var(--color-ink-2);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.su-embed-file:hover {
+  border-color: var(--color-accent-line);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.su-embed-icon {
+  font-size: 11px;
+  color: var(--color-craft);
+}
+
+/* 库里还没这个文件：虚线占位，别让人以为"嵌了个寂寞" */
+.su-embed-miss {
+  display: inline-block;
+  padding: 4px 9px;
+  border: 1px dashed var(--color-line-2);
+  border-radius: 8px;
+  color: var(--color-ink-3);
+  font-size: 12.5px;
+  user-select: none;
+}
+
 /* ---------- 稿纸（.rich）的默认排版 ---------- */
 
 /*

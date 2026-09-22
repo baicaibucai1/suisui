@@ -93,6 +93,12 @@ type State = {
   createNote: (dir: string, title: string, kind?: NoteKind) => string;
   /** 建文件夹（= 在目录里放一个隐藏标识文件）。返回最终目录名，非法输入返回 null。 */
   createFolder: (dir: string) => string | null;
+  /**
+   * 放一个附件进去（内容是 **base64**，不是原文）。返回最终路径（重名自动加 -2）。
+   * 二进制不走 `setContent` —— 那条路会被当成文字，且两者都叫"设置内容"时
+   * 很容易有人误把 base64 当正文存进来。
+   */
+  putAttachment: (dir: string, name: string, base64: string) => string;
   /** 删文件夹 = 删掉这个前缀下的所有文件。**不可逆**（远端要等同步确认）。 */
   removeFolder: (dir: string) => void;
   refreshPlan: () => Promise<void>;
@@ -209,6 +215,17 @@ export const useStore = create<State>()(
         if (!r) return null;
         set({ files: r.files, dirty: true, planStale: true, drawer: false });
         return r.dir;
+      },
+
+      putAttachment: (dir, name, base64) => {
+        const files = { ...get().files };
+        const clean = name.trim().replace(/^\/+/, '');
+        const d = dir.trim().replace(/^\/+|\/+$/g, '');
+        const rel = d ? `${d}/${clean}` : clean;
+        const p = dedupePath(rel, (x) => x in files);
+        files[p] = base64;
+        set({ files, current: p, dirty: true, planStale: true, drawer: false });
+        return p;
       },
 
       removeFolder: (dir) => {

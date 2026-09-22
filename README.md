@@ -97,6 +97,11 @@ VITE_GH_BRANCH=main
   弹层改成贴边（桌面上居中的浮层在手机上会有一半在屏外）；`100dvh` + `interactive-widget=resizes-content`
   让软键盘压缩视口而不是盖住光标；底部加安全区内边距。**桌面端一行都没改** —— 布局级规则集中在
   `styles.css` 的一个 `@media (width < 48rem)` 块里，其余是就地 `max-md:` 变体
+- **附件（图片 / PDF）**：图片直接看图，PDF 用 **pdf.js 画在 canvas 上**（不是 iframe ——
+  Tauri 的 WebView2 不带内置 PDF 查看器，嵌 iframe 在桌面端是白屏）。
+  正文里写 `![[图.png]]` 就把图嵌进正文（存进文件的还是那几个字），`![](./图.png)`
+  这种标准写法也能显示。左侧「添加附件」选本地文件即可，单个上限 8MB。
+  同步时附件走 **base64 + 字节指纹**（见下面「附件的三条规矩」）
 - **PWA 外壳**：`manifest.webmanifest` + 四种尺寸图标 + 手写 Service Worker。
   导航请求 network-first（**用 cache-first 的话发新版后永远升不了级**），静态资源 stale-while-revalidate，
   `api.github.com` 一律放行到网络（缓存住实时数据等于把用户锁在旧快照上）。
@@ -112,6 +117,7 @@ VITE_GH_BRANCH=main
 | `[[开张]]` | 链到「开张」那篇 |
 | `[[开张#第二段]]` | 链到那篇的「第二段」小节，跳过去并滚到那儿闪一下 |
 | `[[开张|去看]]` | 显示成「去看」，仍指向开张（`|` 只影响显示，不影响指向） |
+| `![[图.png]]` | 把这张图**嵌进正文**里显示（PDF 则是一张能点的卡片） |
 | `#灵感` / `#读书/笔记` | 标签，可点（侧栏只留带它的篇） |
 
 - **怎么点**：桌面是 **Ctrl / ⌘ + 单击**（单击是"把光标放进去改字"，这是编辑器不是阅读器）；
@@ -132,6 +138,23 @@ markdown 序列化器会把 `[[` 写成 `\[\[`，不还原的话磁盘上那串�
 
 源码模式（textarea）里没有高亮也没有补全 —— 它是纯文本框，没法给一段字套 span。
 反链面板不受影响，两种模式都在。
+
+### 附件的三条规矩（`lib/binary.ts`）
+
+附件的**内容也是存在 `files` 里的**，只不过存的是 base64（没有 `data:` 前缀、没有换行）。
+判断"这条是文字还是附件"只看路径后缀，所以 `FileMap` / 快照的格式一个字段都没变。
+
+1. **绝不过 `normalizeText`。** 它现在只动 BOM 和 CR，看着无害，但一旦以后有人往里加 trim，
+   附件就悄悄坏了 —— 所以同步链路对附件压根不调它（按路径分派）。
+2. **指纹按解码后的字节算。** 远端（GitHub）算的是文件字节的 blob sha；
+   要是按 base64 字符串算，两边永远不等，每次同步都判成"本地改了"，附件会被无限来回推。
+3. **必须按字节读，不能走 `res.text()`。** 浏览器拿 UTF-8 解二进制，解不出的字节变成
+   U+FFFD —— 那不是"有点脏"，是文件彻底毁了，而且不可逆（推上去会把远端那份也覆盖成坏的）。
+   所以 `Remote` 接口专门有 `readBytes()`，`RemoteChange` 有 `encoding: 'base64'`。
+
+附件名字的解析（**`resolveFile`，不是 `resolveWiki`**）：笔记那套会先把后缀剥掉
+（`[[开张]]` 要能指到 `2026-09-21-开张.md`），而附件恰恰是**带着后缀**被引用的
+（`![[dot.png]]`），两套规矩不能混。
 
 ## 同步后端：GitHub / 坚果云 / OneDrive
 
@@ -192,10 +215,11 @@ OneDrive 给 quickXorHash，算法跟本地不同 —— 直接拿来当基线�
 - OneDrive 的 OAuth 授权（要 Azure 应用的 client_id 走 PKCE）
 - 安卓端的坚果云（同样卡在 CORS，需要原生插件走 Kotlin 发 WebDAV）
 - 冲突的三路自动合并（现在只留副本）
-- 图片等二进制
+- 附件的**增量同步**：现在改一个字节也要整个文件重传（附件走的是全量 base64）
 - 双链还差几件事：**改名不断链**（现在改名了，别人引的还是旧名字）、
   **未创建链接的批量创建**、标签的全局列表视图（现在只能从某篇里点进去筛）、
-  `![[嵌入]]`（把另一篇的正文嵌进来）、源码模式下的链接高亮与补全（textarea 做不到）
+  `![[嵌入]]` 嵌的是**另一篇笔记的正文**（现在只能嵌图片 / PDF，嵌笔记是一张卡片）、
+  源码模式下的链接高亮与补全（textarea 做不到）
 
 ## 测试
 
@@ -208,7 +232,9 @@ node tests/rich.test.mjs          # 稿纸格式内核 50 例（拆合 / 圈作�
 node tests/folder.test.mjs        # 文件夹 58 例（目录名清洗 / 标识文件 / 空目录推导 / 嵌套建树）
 node tests/davxml.test.mjs        # WebDAV 的 PROPFIND 解析 15 例（编码 / 库根剥离 / 各家写法差异）
 node tests/links.test.mjs         # 双链与标签 78 例（解析 / 代码块不算 / 标题去日期前缀 / 转义还原）
+node tests/binary.test.mjs        # 附件 54 例（后缀判定 / base64 往返 / 大块不爆栈 / 字节指纹 / ![[嵌入]] 解析）
 node tests/link-e2e.mjs           # 浏览器：高亮 → Ctrl+点跳转 → 点没有的就建 → 补全 → 标签筛选 → 反链面板
+node tests/attach-e2e.mjs         # 浏览器：添加图片 → 看图 → PDF 画在 canvas 上翻页 → 正文嵌图 → 超限被拦
 node tests/folder-e2e.mjs         # 浏览器：建多层文件夹 → 空目录看得见 → 往里写笔记 → 删（含确认）
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
 node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
@@ -246,7 +272,7 @@ node scripts/gen-icons.mjs        # 重新生成主屏图标（用本机 Edge �
 几个脚本在 `chromium.launch` 之前会**清掉 `http_proxy` 等环境变量**并带 `--no-proxy-server`（坑 3）。
 `smoke.mjs` 在左侧没有 md 时会跳过「打开 / 源码」两节，好让**纯本地的「创建笔记」在断网时也测得到**。
 
-## 踩过的十个坑（都不报错，是测试抓出来的）
+## 踩过的坑（都不报错，是测试抓出来的）
 
 **1. GitHub `/git/ref/heads/{branch}` 有 CDN 缓存（约 60 秒）。**
 推完立刻再比对，会拿回**推送前**的 HEAD → 远端 tree 里看不到刚推上去的文件 →
@@ -336,6 +362,14 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 它已 gitignore），绝不让"上一轮的残留"或"清理失败"拖住构建。
 ⚠️ **别把 `rename` 或 `rmSync(dir, {recursive:true})` 加回来。**
 
+**11. 附件那条路，任何一步"按文本处理"都是静默损坏。**
+它不报错、不警告，界面上只是"图裂了 / 打不开"，而且**推上去就把远端那份也覆盖成坏的**。
+三个具体的点：① `res.text()` 解二进制 → 解不出的字节变 U+FFFD；
+② 指纹按 base64 字符串算 → 和远端的字节 sha 永远不等 → 每次同步都判成"本地改了"；
+③ `resolveWiki`（笔记那套）去解析 `![[dot.png]]` → 它会先把后缀剥掉，于是永远找不到。
+所以附件单独有一套：`readBytes()` / `encoding: 'base64'` / `storedSha()` / `resolveFile()`。
+⚠️ 反过来也一样：`[[开张]]` 那种**不带后缀**的引用不能走 `resolveFile`，两套别混着用。
+
 ## 代码结构
 
 | 文件 | 职责 |
@@ -348,7 +382,8 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/lib/rich.ts` | 稿纸格式内核：拆合「这篇的 CSS / 正文」、`scopedCss` 圈作用域、HTML 清洗、主题预设（零依赖，可单测） |
 | `src/lib/folders.ts` | 文件夹：目录名清洗、标识文件、目录推导、嵌套建树（零依赖，可单测） |
 | `src/lib/links.ts` | 双链与标签：解析、名字→路径、反向链接 / 标签索引、补全候选、`unescapeWiki`（零依赖，可单测） |
-| `src/lib/pm-links.ts` | ProseMirror 插件：`[[ ]]` / `#tag` 的装饰（**不动 schema，只加 span**）、`[[` 补全的触发与插入 |
+| `src/lib/binary.ts` | 附件：后缀判定、MIME、`base64 ↔ 字节`、**字节指纹**、体积上限（零依赖，可单测） |
+| `src/lib/pm-links.ts` | ProseMirror 插件：`[[ ]]` / `#tag` 的装饰（**不动 schema，只加 span**）、`[[` 补全的触发与插入、`![[ ]]` 的嵌入 widget |
 | `src/lib/providers/types.ts` | 同步后端的统一接口 `Remote` + 各家元数据（含"浏览器能不能直连 / 做完没有"） |
 | `src/lib/providers/github.ts` | GitHub 实现（Git Data API，一个 commit） |
 | `src/lib/providers/webdav.ts` | 坚果云实现（WebDAV）。请求走注入的 transport —— 浏览器没有，桌面端才有 |
@@ -363,6 +398,8 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
 | `src/components/EmptyState.tsx` | 编辑区的两种"还没有编辑器"状态（空态 / 加载骨架）。**必须在主包里** —— 见「已实现」里的按需加载 |
 | `src/components/WikiHints.tsx` | `[[` 补全浮层（跟着 `[[` 那个字符定位，mousedown 掐默认动作以保住编辑器焦点） |
 | `src/components/BacklinkPane.tsx` | 正文下方的反向链接 / 标签 / 待建笔记面板（有关系才出现） |
+| `src/components/PreviewPane.tsx` | 附件预览：图片 + 体积 / 缩放 / 下载。**必须轻** —— 里面的 pdf.js 是二级懒加载 |
+| `src/components/PdfView.tsx` | PDF：pdf.js 渲到 canvas（翻页 / 缩放 / 适应宽度）。只在真打开 PDF 时才下载 |
 | `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（同步 + 设置）** / 文件树（含「创建笔记」、标签筛选） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
 | `src/main.tsx` | 入口。DEV 下把 store 挂到 `window.__suisui`；**只在 PROD 注册 Service Worker** |
 | `public/manifest.webmanifest` | PWA 清单（standalone / 图标 / 语言） |
@@ -412,6 +449,10 @@ Tailwind v4 生成的是 `--tw-translate-x: -50%` + `translate: var(--tw-transla
   / `data-wiki`（装饰 span，带 `data-heading`） / `data-tag` / `data-wiki-hints` / `data-wiki-hint="<序号>"` / `data-wiki-kind`
   / `data-backlinks` / `data-backlink-tag` / `data-backlink-from` / `data-backlink-create`
   / `data-tag-filter` / `data-tag-clear` / `data-tag-empty`
+  / `data-attach` / `data-attach-input` / `data-attach-error`
+  / `data-preview`（值为 image / pdf）/ `data-preview-img` / `data-preview-size` / `data-download`
+  / `data-zoom-in` / `data-zoom-out` / `data-zoom-fit` / `data-zoom`
+  / `data-pdf` / `data-pdf-canvas` / `data-page` / `data-page-prev` / `data-page-next`
   / `data-editor-empty` / `data-editor-loading`），e2e 依赖它们。
 - ⚠️ **点正文里的链接必须带 Ctrl / ⌘**（`click({ modifiers: ['Control'] })`），
   单击是"把光标放进去改字"；只有窄屏（≤768px）是单击就跳。测试里漏了 modifiers 会一直点不动。

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { isPush } from '../lib/decide';
 import { isProgramArtifact } from '../lib/visible';
+import { ATTACH_LIMIT, bytesToBase64, isBinaryPath, isImagePath, isPdfPath, isTooBig, prettySize } from '../lib/binary';
 import { NOTE_DIRS, notePath } from '../lib/note';
 import { NOTE_KINDS, isRichPath } from '../lib/rich';
 import type { NoteKind } from '../lib/rich';
@@ -15,7 +16,26 @@ import {
   type TreeNode,
 } from '../lib/folders';
 import { tagsOf } from '../lib/links';
-import { Chevron, Close, Eye, EyeOff, FileText, Folder, FolderPlus, Paper, Pen, Plus, Tag, Trash } from './icons';
+import {
+  Chevron,
+  Close,
+  Eye,
+  EyeOff,
+  FilePdf,
+  FileText,
+  Folder,
+  FolderPlus,
+  Image,
+  Paper,
+  Pen,
+  Plus,
+  Tag,
+  Trash,
+  Upload,
+} from './icons';
+
+/** 「添加附件」能选哪些后缀。和 `lib/binary.ts` 认的保持一致，别各写一份。 */
+const ATTACH_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.avif,.bmp,.svg,.ico,.pdf';
 
 /** 中文输入法组字期间按回车是"选词"，不能当成提交 —— 否则打拼音一选字就把笔记建了。 */
 function isComposing(e: React.KeyboardEvent) {
@@ -54,6 +74,7 @@ export default function FileTree() {
   const removeFile = useStore((s) => s.removeFile);
   const createFolder = useStore((s) => s.createFolder);
   const removeFolder = useStore((s) => s.removeFolder);
+  const putAttachment = useStore((s) => s.putAttachment);
   const tagFilter = useStore((s) => s.tagFilter);
   const setTagFilter = useStore((s) => s.setTagFilter);
   const [creating, setCreating] = useState(false);
@@ -69,6 +90,12 @@ export default function FileTree() {
   const [folderName, setFolderName] = useState('');
   // 删目录要人点头：一个目录里可能有十几篇，而且同步之后远端也会跟着没
   const [pendingDir, setPendingDir] = useState<string | null>(null);
+  /** 添加附件：被挡下来的那些（太大 / 不是图片或 PDF）要说清楚为什么 */
+  const [attachErr, setAttachErr] = useState<string | null>(null);
+  const pickRef = useRef<HTMLInputElement>(null);
+
+  /** 附件落在哪儿：跟着当前打开的那篇走，没有就 thoughts */
+  const attachDir = current ? current.slice(0, Math.max(0, current.lastIndexOf('/'))) : 'thoughts';
 
   const changeMap = useMemo(() => {
     const m = new Map<string, ChangeKind>();
@@ -130,6 +157,32 @@ export default function FileTree() {
     setNoteTitle('');
   };
 
+  /*
+   * 附件进库：读成本地字节 → base64 → 塞进 files（同步时会以 base64 身份推上去）。
+   * ⚠️ 走 `arrayBuffer` 不是 `text`：后者会拿 UTF-8 解二进制，图当场就花。
+   */
+  const onPickAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = Array.from(e.target.files ?? []);
+    // 清掉 value：不然连着选两次同一个文件，第二次不触发 change
+    e.target.value = '';
+    if (list.length === 0) return;
+    const rejected: string[] = [];
+    for (const f of list) {
+      if (!isBinaryPath(f.name)) {
+        rejected.push(`「${f.name}」不是图片或 PDF`);
+        continue;
+      }
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (isTooBig(bytes.length)) {
+        rejected.push(`「${f.name}」有 ${prettySize(bytes.length)}，超过单个 ${prettySize(ATTACH_LIMIT)} 的上限`);
+        continue;
+      }
+      putAttachment(attachDir, f.name, bytesToBase64(bytes));
+      uncollapse(attachDir);
+    }
+    setAttachErr(rejected.length ? rejected.join('；') : null);
+  };
+
   const submitFolder = () => {
     const dir = normalizeDir(folderName);
     if (!dir) return;
@@ -166,9 +219,9 @@ export default function FileTree() {
     const name = path.slice(path.lastIndexOf('/') + 1);
     const kind = changeMap.get(path);
     const active = path === current;
-    // 稿纸换个图标，一眼分得开
-    const rich = isRichPath(path);
-    const Glyph = rich ? Paper : FileText;
+    // 稿纸 / 图片 / PDF 各有各的图标，一眼分得开
+    const Glyph = isRichPath(path) ? Paper : isImagePath(path) ? Image : isPdfPath(path) ? FilePdf : FileText;
+    const tone = isRichPath(path) ? 'text-craft' : isBinaryPath(path) ? 'text-accent' : 'text-ink-3';
     return (
       <div
         key={path}
@@ -194,10 +247,7 @@ export default function FileTree() {
             className="absolute left-0 top-1/2 h-[15px] w-[3px] -translate-y-1/2 rounded-r-[2px] bg-accent"
           />
         )}
-        <Glyph
-          size={13}
-          className={`shrink-0 ${active ? 'text-accent' : rich ? 'text-craft' : 'text-ink-3'}`}
-        />
+        <Glyph size={13} className={`shrink-0 ${active ? 'text-accent' : tone}`} />
         <span className="min-w-0 flex-1 truncate">{name}</span>
 
         {kind && (
@@ -325,7 +375,43 @@ export default function FileTree() {
         >
           <Plus size={14} />
         </button>
+        {/*
+          添加附件。用一个藏起来的 file input：不自己画文件选择框，
+          系统那个对话框本来就是用户最熟的（还能多选、能拖）。
+        */}
+        <button
+          data-attach
+          onClick={() => pickRef.current?.click()}
+          className="grid h-6 w-6 place-items-center rounded-[7px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+          title={`添加附件（图片 / PDF，单个最大 ${prettySize(ATTACH_LIMIT)}）`}
+        >
+          <Upload size={14} />
+        </button>
+        <input
+          ref={pickRef}
+          data-attach-input
+          type="file"
+          multiple
+          accept={ATTACH_ACCEPT}
+          onChange={(e) => void onPickAttach(e)}
+          className="hidden"
+        />
       </Section>
+
+      {attachErr && (
+        <div
+          data-attach-error
+          className="mx-2.5 mb-1.5 flex items-start gap-1.5 rounded-[8px] border border-warn-line bg-warn-soft px-2 py-1.5"
+        >
+          <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-warn">{attachErr}</span>
+          <button
+            onClick={() => setAttachErr(null)}
+            className="shrink-0 rounded-[5px] p-0.5 text-warn transition-colors hover:bg-warn/10"
+          >
+            <Close size={11} />
+          </button>
+        </div>
+      )}
 
       {/* 筛选中的时候，这条横幅是「你现在在看的是哪一小撮」的唯一说明 */}
       {tagHits && (

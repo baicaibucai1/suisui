@@ -365,3 +365,76 @@ export const Paper = (p: IconProps) => (
     <path d="M6.2 2.5v11M9.8 2.5v11" />
   </Svg>
 );
+
+/** 图片附件：方框 + 山头 + 太阳（和"文件"一眼分得开） */
+export const Image = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.3" y="2.9" width="11.4" height="10.2" rx="1.6" />
+    <circle cx="5.6" cy="6.1" r="1" />
+    <path d="M2.9 11.4l3-3 2.4 2.4 2-1.8 2.8 2.4" />
+  </Svg>
+);
+
+/** PDF 附件：一个文件 + 右下折角，角里那条横线是"文档"的意思 */
+export const FilePdf = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9.1 1.9H5.3a1.5 1.5 0 0 0-1.5 1.5v9.2a1.5 1.5 0 0 0 1.5 1.5h5.4a1.5 1.5 0 0 0 1.5-1.5V4.9L9.1 1.9Z" />
+    <path d="M9 1.9v3.1h3.2" />
+    <path d="M5.7 10.4h1.6a.9.9 0 0 0 0-1.8H5.7v3.6" />
+    <path d="M10.3 10.4V8.6h.9a.9.9 0 0 1 0 1.8h-.9" />
+  </Svg>
+);
+
+/** 上传附件：一个托盘 + 向上的箭头 */
+export const Upload = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.6 10.2v1.6a1.3 1.3 0 0 0 1.3 1.3h8.2a1.3 1.3 0 0 0 1.3-1.3v-1.6" />
+    <path d="M8 10.6V2.9M5.3 5.6 8 2.9l2.7 2.7" />
+  </Svg>
+);
+
+/** 下载 / 另存 */
+export const Download = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.6 10.2v1.6a1.3 1.3 0 0 0 1.3 1.3h8.2a1.3 1.3 0 0 0 1.3-1.3v-1.6" />
+    <path d="M8 2.9v7.7M5.3 7.9 8 10.6l2.7-2.7" />
+  </Svg>
+);
+
+/** 放大镜：放大 / 缩小 / 适应窗口三档，靠加减号和框区分 */
+export const ZoomIn = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="7" cy="7" r="4.4" />
+    <path d="M10.4 10.4 13.6 13.6M5.2 7h3.6M7 5.2v3.6" />
+  </Svg>
+);
+
+export const ZoomOut = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="7" cy="7" r="4.4" />
+    <path d="M10.4 10.4 13.6 13.6M5.2 7h3.6" />
+  </Svg>
+);
+
+/** 适应窗口：四角往里收 */
+export const Fit = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.6 5.6V3.2a.6.6 0 0 1 .6-.6h2.4" />
+    <path d="M13.4 5.6V3.2a.6.6 0 0 0-.6-.6h-2.4" />
+    <path d="M2.6 10.4v2.4a.6.6 0 0 0 .6.6h2.4" />
+    <path d="M13.4 10.4v2.4a.6.6 0 0 1-.6.6h-2.4" />
+  </Svg>
+);
+
+/** 上一页 / 下一页（PDF 翻页） */
+export const PagePrev = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9.8 3.6 5.4 8l4.4 4.4" />
+  </Svg>
+);
+
+export const PageNext = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6.2 3.6 10.6 8l-4.4 4.4" />
+  </Svg>
+);
