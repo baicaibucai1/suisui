@@ -25,10 +25,17 @@ export const wikiKey = new PluginKey('suisui-wiki');
 export type EmbedInfo = {
   /** 图片就给一个能直接塞进 `<img src>` 的地址（blob URL）；非图片给空串 */
   url: string;
-  /** `image` = 直接画出来；`file` = 画成一张卡片，点一下打开预览 */
-  kind: 'image' | 'file';
+  /**
+   * `image` = 直接画出来；`note` = 把**那篇的正文**渲染进来（Obsidian 的 `![[某篇]]`）；
+   * `file` = 画成一张卡片，点一下打开预览
+   */
+  kind: 'image' | 'note' | 'file';
   /** 卡片上显示的那个名字 */
   name: string;
+  /** `kind === 'note'` 时，那篇正文渲染出来的 DOM 片段 */
+  html?: string;
+  /** `kind === 'note'` 时，被嵌那篇的真实路径（回链、去重都要） */
+  path?: string;
 };
 
 /** 光标停在一个还没闭合的 `[[` 后面 —— 这时该弹补全。 */
@@ -99,6 +106,30 @@ function embedWidget(target: string, info: EmbedInfo | null, open: ((t: string) 
     return box;
   }
 
+  /*
+   * 嵌进来的一篇笔记正文（`![[某篇]]`）。
+   *
+   * ⚠️ 这里必须用 `innerHTML` 装的是**我们自己拼的片段**（lib/embed.ts 产出），
+   * 里面所有来自正文的文字都过了 escape —— 不是拿用户原文直接 innerHTML。
+   * 片段里的链接点不动（只读预览），唯一可点的是「打开原文」和卡片，
+   * 事件在这里统一接：点任何带 `data-note-open` 的东西就去那篇。
+   */
+  if (info?.kind === 'note' && info.html) {
+    box.classList.add('su-embed-note');
+    const wrap = document.createElement('span');
+    wrap.className = 'su-note-wrap';
+    wrap.innerHTML = info.html;
+    box.appendChild(wrap);
+    box.addEventListener('click', (e) => {
+      const t = (e.target as HTMLElement)?.closest?.('[data-note-open]') as HTMLElement | null;
+      if (!t) return;
+      e.preventDefault();
+      // 嵌正文那个块的 head 上也挂了 data-note-embed —— 点空白处不该跳
+      open?.(t.dataset.noteOpen ?? t.dataset.noteEmbed ?? target);
+    });
+    return box;
+  }
+
   if (info) {
     box.classList.add('su-embed-file');
     const icon = document.createElement('span');
@@ -145,8 +176,15 @@ function build(state: EditorState, opts: WikiOpts): DecorationSet {
         Decoration.widget(
           pos + e.from,
           () => embedWidget(e.target, info, opts.openEmbed),
-          // key 里带上 url：附件内容变了（刚同步下来）时 PM 才会重画，不然复用旧 DOM
-          { key: `embed:${e.target}:${info?.url ?? 'none'}:${hit ? 1 : 0}`, side: -1 },
+          /*
+           * key 里带上 **url 和正文长度**：附件刚同步下来（url 变）、
+           * 或者被嵌那篇被改了（html 长度变）时，PM 才会把 widget 重画。
+           * 只写 target 的话，第一次画完那个 DOM 会被一直复用 —— 内容改了看不见。
+           */
+          {
+            key: `embed:${e.target}:${info?.url ?? 'none'}:${info?.html?.length ?? 0}:${hit ? 1 : 0}`,
+            side: -1,
+          },
         ),
       );
     }

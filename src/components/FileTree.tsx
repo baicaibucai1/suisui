@@ -15,7 +15,7 @@ import {
   normalizeDir,
   type TreeNode,
 } from '../lib/folders';
-import { tagsOf, titleOf } from '../lib/links';
+import { tagIndex, tagsOf, titleOf } from '../lib/links';
 import {
   Chevron,
   Close,
@@ -95,6 +95,12 @@ export default function FileTree() {
   const [attachErr, setAttachErr] = useState<string | null>(null);
   /** 顶部搜索框：按文件名 / 笔记标题过滤。空串 = 没在搜，照常显示整棵树。 */
   const [query, setQuery] = useState('');
+  /**
+   * 标签视图：整棵树换成「全库标签 + 篇数」。
+   * 跟搜索、标签筛选一样是**临时视图**，不持久化 —— 下次打开若列表莫名其妙
+   * 变成一堆标签，第一反应是坏了而不是"我上次点开的"。
+   */
+  const [tagView, setTagView] = useState(false);
   const pickRef = useRef<HTMLInputElement>(null);
 
   /** 附件落在哪儿：跟着当前打开的那篇走，没有就 thoughts */
@@ -140,6 +146,22 @@ export default function FileTree() {
 
   const kindExt = NOTE_KINDS.find((k) => k.id === noteKind)?.ext ?? 'md';
   const notePreview = notePath(noteDir, noteTitle, undefined, kindExt);
+
+  /*
+   * 标签视图：全库标签按**用量**从多到少排（用得多的才是这个库的主线），
+   * 同量按名字排。点一个就进筛（复用上面那条 tagFilter 的通路）。
+   * 程序文件里的 `#` 不算 —— 那是代码注释 / 色值，跟上面文件列表同一套过滤。
+   */
+  const allTags = useMemo(() => {
+    const idx = tagIndex(files);
+    const out: { tag: string; count: number; paths: string[] }[] = [];
+    for (const [tag, paths] of idx) {
+      const keep = showAll ? paths : paths.filter((p) => !isProgramArtifact(p));
+      if (keep.length > 0) out.push({ tag, count: keep.length, paths: keep });
+    }
+    out.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'zh'));
+    return out;
+  }, [files, showAll]);
 
   /*
    * 搜索：只认**文件名和标题**（ Obsidian 顶栏那个搜索框的轻量版 —— 全文搜索
@@ -387,6 +409,22 @@ export default function FileTree() {
         >
           <FolderPlus size={14} />
         </button>
+        {/* 标签视图：整棵树换成「全库标签 + 篇数」。没打标签时按钮也留着 ——
+            点进去看到"还没有标签"，比按钮凭空消失好懂 */}
+        <button
+          data-tag-view
+          onClick={() => {
+            setTagView((v) => !v);
+            setCreating(false);
+            setFoldering(false);
+          }}
+          className={`grid h-6 w-6 place-items-center rounded-[7px] transition-colors ${
+            tagView ? 'bg-surface-2 text-craft' : 'text-ink-3 hover:bg-surface-2 hover:text-ink'
+          }`}
+          title={tagView ? '回到文件列表' : '标签（全库）'}
+        >
+          <Tag size={13.5} />
+        </button>
         <button
           data-new
           onClick={() => {
@@ -595,7 +633,7 @@ export default function FileTree() {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
-        {!tagHits && searchHits === null && total === 0 && (
+        {!tagHits && searchHits === null && !tagView && total === 0 && (
           <div className="px-3 py-6 text-center">
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               还没有文件
@@ -621,7 +659,7 @@ export default function FileTree() {
           </div>
         )}
 
-        {!tagHits && total > 0 && hiddenCount === total && (
+        {!tagHits && !tagView && total > 0 && hiddenCount === total && (
           <div className="px-3 py-6 text-center">
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               这个仓库里没有文字文件
@@ -651,12 +689,53 @@ export default function FileTree() {
           </div>
         )}
 
+        {/*
+          标签视图：一列标签，每个带篇数。点一下进筛选（tagHits 那条路），
+          于是"看全库有哪些标签"和"看某个标签下有哪些篇"是连贯的两步。
+          ⚠️ 只在没在搜 / 没在筛的时候接管列表，否则三套视图会互相盖。
+        */}
+        {tagView && searchHits === null && !tagHits && (
+          <div data-tag-list className="space-y-[1px]">
+            {allTags.length === 0 ? (
+              <div data-tag-list-empty className="px-3 py-6 text-center">
+                <p className="text-[12.5px] leading-relaxed text-ink-3">
+                  还没有标签
+                  <br />
+                  在正文里写 <span className="font-mono">#读书</span> 就有了
+                </p>
+              </div>
+            ) : (
+              allTags.map((t) => (
+                <button
+                  key={t.tag}
+                  type="button"
+                  data-tag-item={t.tag}
+                  onClick={() => {
+                    setTagFilter(t.tag);
+                    setTagView(false);
+                  }}
+                  style={{ paddingLeft: filePad(0) }}
+                  className="group flex w-full items-center gap-2 rounded-[7px] py-[6px] pr-1.5 text-left transition-colors hover:bg-surface-2"
+                >
+                  <Tag size={13} className="shrink-0 text-craft" />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                    {t.tag}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10.5px] text-ink-3">
+                    {t.count}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
         <div className="space-y-[1px]">
           {searchHits !== null ? (
             searchHits.map((p) => renderFile(p, 0))
           ) : tagHits ? (
             tagHits.map((p) => renderFile(p, 0))
-          ) : (
+          ) : tagView ? null : (
             <>
               {tree.files.filter((p) => !isFolderFile(p)).map((p) => renderFile(p, 0))}
               {tree.dirs.map((d) => renderDir(d, 0))}

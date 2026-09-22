@@ -262,6 +262,55 @@ export function outgoingOf(text: string, paths: string[], preferDir = ''): { lin
   return [...seen.values()];
 }
 
+/**
+ * 全库扫一遍：**引用了但还没建的笔记**。
+ *
+ * 去重是这里最要紧的事 —— 同一个 `[[读书笔记]]` 可能被十篇引用，
+ * 人只想看见它一次（"这一篇还没建"），而不是十个一模一样的待办。
+ * 所以按「目标」归并，把引用它的篇都收着（界面好显示"被 3 篇引用"）。
+ *
+ * 落点目录的规则：**哪篇引的就建在哪篇旁边**是最符合直觉的，但一个目标
+ * 可能被散在不同目录的几篇同时引用 —— 这时取**引用最多的那个目录**，
+ * 一样多就按目录名排。全部都在根目录就用 `fallbackDir`。
+ */
+export function missingNotes(
+  files: Record<string, string>,
+  fallbackDir = 'thoughts',
+): { target: string; from: string[]; dir: string }[] {
+  const paths = Object.keys(files);
+  const byTarget = new Map<string, string[]>();
+  for (const [from, text] of Object.entries(files)) {
+    if (typeof text !== 'string') continue;
+    for (const { link, path } of outgoingOf(text, paths, dirOf(from))) {
+      if (path) continue; // 指到了就不算"没建"
+      const list = byTarget.get(link.target);
+      if (list) {
+        if (!list.includes(from)) list.push(from);
+      } else byTarget.set(link.target, [from]);
+    }
+  }
+
+  const out: { target: string; from: string[]; dir: string }[] = [];
+  for (const [target, from] of byTarget) {
+    // 每个引用者所在目录投一票，得票最多的目录就是落点
+    const votes = new Map<string, number>();
+    for (const f of from) {
+      const d = dirOf(f);
+      votes.set(d, (votes.get(d) ?? 0) + 1);
+    }
+    let best = fallbackDir;
+    let bestN = -1;
+    for (const [d, n] of [...votes].sort((a, b) => a[0].localeCompare(b[0], 'zh'))) {
+      if (n > bestN) {
+        bestN = n;
+        best = d;
+      }
+    }
+    out.push({ target, from: from.sort((a, b) => a.localeCompare(b, 'zh')), dir: best || fallbackDir });
+  }
+  return out.sort((a, b) => b.from.length - a.from.length || a.target.localeCompare(b.target, 'zh'));
+}
+
 /** 谁引用了这篇 —— 反向链接。同一篇里引了多次只算一条，但次数带着。 */
 export function backlinksOf(
   files: Record<string, string>,

@@ -3,6 +3,7 @@ import { useStore } from '../lib/store';
 import { useMedia, WIDE } from '../lib/media';
 import { outlineOf } from '../lib/links';
 import BacklinkPane from './BacklinkPane';
+import MissingPane from './MissingPane';
 import { ListBullet, PanelRight } from './icons';
 
 /*
@@ -131,6 +132,14 @@ export default function RightPane() {
             这篇不是 markdown，没有链接关系。
           </p>
         )}
+      </PaneSection>
+
+      {/*
+        全库的「待建笔记」。跟上面那节的区别：上面是**这一篇**的出链，
+        这里是**所有篇**攒下来的悬空链接 —— 写的时候顺手写下打算以后补的那些。
+      */}
+      <PaneSection label="待建">
+        <MissingPane />
       </PaneSection>
 
         {/* 右栏底部收个尾：大纲很长时上面滚，这行字提醒下面还有一节 */}

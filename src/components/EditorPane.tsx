@@ -22,8 +22,11 @@ import { toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { useStore } from '../lib/store';
 import { EMPTY_ACTIVE, activeFromText, applyTool, linkAt } from '../lib/mdkit';
 import type { Active, ToolId } from '../lib/mdkit';
-import { cleanHeading, dirOf, lineOffset, resolveFile, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
-import { base64ToBytes, blobOf, isImagePath, mimeOf } from '../lib/binary';
+import { cleanHeading, dirOf, lineOffset, resolveFile, resolveWiki, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
+import { base64ToBytes, blobOf, isBinaryPath, isImagePath, mimeOf } from '../lib/binary';
+import { renderEmbed } from '../lib/embed';
+import type { Resolved } from '../lib/embed';
+import { escapeHtml, loadMdRenderer, mdRendererReady, mdToHtml } from '../lib/mdhtml';
 import { flashNode, flashPlugin, insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
 import type { EmbedInfo } from '../lib/pm-links';
 import type { WikiQuery } from '../lib/pm-links';
@@ -146,6 +149,16 @@ export default function EditorPane() {
   const dirRef = useRef('');
   /** 附件原文（base64）的最新值 —— 插件只认 ref，读到的才是当下的 */
   const filesRef = useRef<Record<string, string>>({});
+  /**
+   * 当前打开这篇的路径。只为一个用途：防**自嵌**
+   * （正文里写 `![[本文]]`，不挡的话就是无限展开的起点）。
+   */
+  const selfRef = useRef('');
+  /**
+   * 正文的最新值。编辑器创建那段异步代码里要判「这篇有没有 `![[...]]`」——
+   * 闭包里的 `content` 是那一刻的，等 Crepe 建好（可能一秒多）早就过期了。
+   */
+  const contentRef = useRef('');
   /*
    * 正文里嵌的那些图，blob URL 按路径缓存。
    * ⚠️ 必须在卸载时全部 revoke：object URL 不回收，整张图会一直挂在内存里，
@@ -177,6 +190,38 @@ export default function EditorPane() {
   dirRef.current = dirOf(current ?? '');
   focusTickRef.current = focusTick;
   filesRef.current = files;
+  selfRef.current = current ?? '';
+  contentRef.current = content;
+
+  /*
+   * 嵌进来的正文里若还有 `![[...]]`，递归展开时用这个解析（笔记和附件都认）。
+   *
+   * ⚠️ 必须声明在 `embedFor` **之前**：后者闭包里引用它，
+   * 而它是 const —— 放后面就是 TDZ，第一次嵌笔记当场 ReferenceError。
+   */
+  const resolveForEmbed = useCallback((target: string): Resolved | null => {
+    const paths = Object.keys(filesRef.current);
+    // 附件带后缀（![[dot.png]]），笔记不带（![[开张]]）—— 两条路各走各的
+    const asset = resolveFile(target, paths, dirRef.current);
+    if (asset) {
+      const stored = filesRef.current[asset];
+      if (typeof stored !== 'string') return null;
+      const name = asset.slice(asset.lastIndexOf('/') + 1);
+      // 图片：复用外层那份 blob 缓存（同一张图不该造两个 URL）
+      const url = embedCache.current.get(asset)?.url ?? null;
+      return { path: asset, name, url, isAsset: true, isImage: isImagePath(asset) };
+    }
+    const note = resolveWiki(target, paths, dirRef.current);
+    if (!note) return null;
+    return {
+      path: note,
+      name: titleOf(note),
+      url: null,
+      isAsset: false,
+      isImage: false,
+      body: filesRef.current[note] ?? '',
+    };
+  }, []);
 
   /*
    * `![[附件]]` 要画什么。
@@ -185,18 +230,47 @@ export default function EditorPane() {
    */
   const embedFor = useCallback(
     (target: string): EmbedInfo | null => {
-      // ⚠️ 走 resolveFile 不是 resolveWiki：附件是**带着后缀**被引用的（![[dot.png]]），
-      // 而 resolveWiki 按笔记的规矩会先把后缀剥掉，那样永远找不到
-      const path = resolveFile(target, Object.keys(filesRef.current), dirRef.current);
+      const paths = Object.keys(filesRef.current);
+
+      /*
+       * 先按**笔记名**找（`![[某篇]]` 不带后缀）—— 这是新加的那条路：
+       * 直接把那篇的正文渲染进来。渲染 / 防环 / 降级标题都在 lib/embed.ts，
+       * 这里只负责「查库 + 交给它」。
+       *
+       * ⚠️ 顺序很要紧：**必须先试笔记再试附件**。反过来会踩一个静默的坑 ——
+       * `resolveFile` 是按"全名含后缀"匹配的，`![[某篇]]`（无后缀）它当然找不到，
+       * 于是返回 null，笔记那条路永远走不到，画出来一张「还没上传」的虚线卡片。
+       * 真实踩过：探针里 noteEmbeds 0、missCards 1，就是栽在这个顺序上。
+       *
+       * ⚠️ 不缓存 —— embedCache 只装 blob URL。要缓存得按"正文内容"做键，
+       * 否则被嵌那篇改了这边看不出来。
+       */
+      const note = resolveWiki(target, paths, dirRef.current);
+      if (note && !isBinaryPath(note)) {
+        const html = renderEmbed(target, {
+          resolve: resolveForEmbed,
+          // chain 起手塞当前这篇：自己嵌自己（`![[本文]]`）当场就该收成卡片
+          depth: 0,
+          chain: selfRef.current ? [selfRef.current] : [],
+          mdToHtml,
+          escape: escapeHtml,
+        });
+        return { url: '', kind: 'note', name: titleOf(note), html: html ?? '', path: note };
+      }
+
+      /*
+       * 附件：`![[dot.png]]` / `![[说明.pdf]]`。走 `resolveFile` 不是 `resolveWiki` ——
+       * 附件是**带着后缀**被引用的，而 resolveWiki 按笔记的规矩会先把后缀剥掉。
+       */
+      const path = resolveFile(target, paths, dirRef.current);
       if (!path) return null;
-      // 只缓存造过 blob URL 的图片：卡片那种没有 URL 可收，缓存它反而会让
-      // 「附件后来上传了」这件事看不出来
-      const cached = embedCache.current.get(path);
-      if (cached) return cached;
       const stored = filesRef.current[path];
       if (typeof stored !== 'string') return null;
       const name = path.slice(path.lastIndexOf('/') + 1);
-      // 笔记本身也能被嵌（Obsidian 的规矩）—— 那就画成一张卡片，点开是那篇
+
+      // 只有图片能造 blob URL，才值得进缓存
+      const cachedImg = embedCache.current.get(path);
+      if (cachedImg) return cachedImg;
       if (!isImagePath(path)) return { url: '', kind: 'file', name };
       try {
         const bytes = base64ToBytes(stored);
@@ -208,7 +282,7 @@ export default function EditorPane() {
         return { url: '', kind: 'file', name };
       }
     },
-    [],
+    [resolveForEmbed],
   );
 
   /*
@@ -423,6 +497,20 @@ export default function EditorPane() {
         setFail(null);
         // 正文里的 `![](./图.png)` 要换成 blob URL，否则是个裂图
         patchMdImages();
+        /*
+         * `![[某篇]]` 要渲染那篇的正文 —— 而 md→HTML 是几十 KB 的解析器，
+         * 懒加载的（见 lib/mdhtml.ts）。所以：
+         *   ① 只有**正文里真有嵌入**才去拉（没有就别为它白下几十 KB）；
+         *   ② 拉之前装饰先按"空正文"画一遍（嵌入区显示抬头 + 空），
+         *      拉回来之后派一个空 transaction 让装饰重算，正文就补上了。
+         * ⚠️ 别改成顶部静态 import —— 首屏包体会涨，lazy-e2e 会当场红。
+         */
+        if (!mdRendererReady() && /!\[\[[^[\]\n]+?\]\]/.test(contentRef.current)) {
+          void loadMdRenderer().then(() => {
+            if (disposed) return;
+            crepe.editor.action((ctx) => refreshWiki(ctx.get(editorViewCtx)));
+          });
+        }
         /*
          * 「创建笔记」之后把光标送进正文 —— **就在此刻处理**，不要另外起轮询去等：
          * 仓库一大，重建一个 Crepe 实例要一秒多，轮询等到的时刻比这晚得多，

@@ -494,6 +494,180 @@ body {
   user-select: none;
 }
 
+/* ---------- 嵌入笔记正文 ![[某篇]] ---------- */
+
+/*
+ * 嵌进来那篇的整块：抬头 + 正文。
+ * 左侧一道黄铜竖线 = 「这一段不是本文写的，是从别处搬来的」——
+ * 不加这个记号，读者会以为嵌进来的标题就是本文的章节。
+ */
+.su-embed-note {
+  display: block;
+  margin: 0.7em 0;
+}
+
+.su-note-wrap {
+  display: block;
+}
+
+.su-note {
+  display: block;
+  border-left: 3px solid var(--color-craft-line);
+  border-radius: 0 8px 8px 0;
+  background: var(--color-paper-2);
+  padding: 8px 12px;
+}
+
+/* 抬头：篇名（衬线，跟"名字"一套）+ 打开原文 */
+.su-note-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.su-note-title {
+  font-family: var(--font-serif, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-craft);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.su-note-open {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  border-bottom: 1px dotted currentColor;
+  user-select: none;
+}
+
+.su-note-open:hover {
+  color: var(--color-accent);
+}
+
+/* 嵌进来的正文：字号收一档、行距松一点 —— 是"引文"不是正文 */
+.su-note-body {
+  display: block;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--color-ink-2);
+}
+
+/*
+ * ⚠️ 两条都要清：**margin 和 padding 都得压掉**，而且必须用 `!important`。
+ * Milkdown/Crepe 给 `.ProseMirror p` 带了 margin + `padding: 4px 0` ——
+ * 嵌进来的段落是这些全局规则的后代，会跟着吃一份：每段实高从 19.5px 涨到 27.5px
+ * （实测），一行字占成一行半，整块看起来"空得不像引文"。
+ * 嵌入区不在 .ProseMirror 的排版体系里（它是 widget），得自己兜住。
+ */
+.su-note-body > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.su-note-body > * + * {
+  margin-top: 0.5em !important;
+}
+
+/*
+ * 被嵌正文的标题降级成这个（lib/embed.ts 的 demoteHeadings）。
+ * 不降级的话，嵌进来的 `<h1>` 和本文的 h1 一样大，层级当场乱掉。
+ */
+.su-note-h {
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-top: 0.7em !important;
+}
+
+.su-note-body ul {
+  list-style: disc;
+  padding-left: 1.3em !important;
+}
+
+.su-note-body ol {
+  list-style: decimal;
+  padding-left: 1.3em !important;
+}
+
+.su-note-body blockquote {
+  padding-left: 0.7em !important;
+  border-left: 2px solid var(--color-line-2);
+  color: var(--color-ink-3);
+}
+
+.su-note-body code {
+  font-size: 0.92em;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--color-surface-2);
+}
+
+.su-note-body pre {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--color-surface-2);
+  overflow-x: auto;
+}
+
+.su-note-body pre code {
+  padding: 0;
+  background: none;
+}
+
+.su-note-body img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.su-note-body table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.su-note-body th,
+.su-note-body td {
+  border: 1px solid var(--color-line);
+  padding: 3px 7px;
+}
+
+/*
+ * 嵌进来的正文里那些 `[[链接]]` / 缺失的嵌入 —— 只读片段，点不动
+ * （要跳转得点抬头的「打开原文」）。给它们链接色，但不给 pointer。
+ */
+.su-note-link {
+  color: var(--color-accent);
+  border-bottom: 1px dotted var(--color-accent-line);
+}
+
+.su-note-link-new {
+  color: var(--color-ink-3);
+  border-bottom-color: var(--color-line-2);
+}
+
+.su-note-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface-2);
+  font-size: 12px;
+  color: var(--color-ink-2);
+}
+
+.su-note-miss {
+  color: var(--color-ink-3);
+  border-bottom: 1px dashed var(--color-line-2);
+}
+
 /* ---------- 稿纸（.rich）的默认排版 ---------- */
 
 /*

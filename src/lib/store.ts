@@ -96,6 +96,11 @@ type State = {
   removeFile: (path: string) => void;
   /** 按「目录 + 标题」造一篇新笔记，返回最终路径（重名会自动加 -2）。 */
   createNote: (dir: string, title: string, kind?: NoteKind) => string;
+  /**
+   * 一次建多篇（「未建链接」那块的批量创建）。返回真正建出来的路径。
+   * **不切 current、不抢焦点** —— 见实现处的注释。
+   */
+  createNotes: (items: { dir: string; title: string }[]) => string[];
   /** 建文件夹（= 在目录里放一个隐藏标识文件）。返回最终目录名，非法输入返回 null。 */
   createFolder: (dir: string) => string | null;
   /**
@@ -213,6 +218,32 @@ export const useStore = create<State>()(
           focusTick: get().focusTick + 1,
         });
         return p;
+      },
+
+      /*
+       * 批量把「引用过但还没建」的笔记一次性建出来。
+       *
+       * 与一篇篇调 `createNote` 的区别有两处，都是刻意的：
+       *   ① **不切 current、不抢焦点** —— 一口气建十篇，界面最后停在哪篇纯属随机，
+       *      还要弹十次焦点。建完留在原地，人自己决定看哪篇。
+       *   ② `dirty` / `planStale` 照旧要置 —— 这些新文件是要同步上去的，
+       *      不说"有本地改动"的话状态栏会撒谎。
+       */
+      createNotes: (items) => {
+        const files = { ...get().files };
+        const made: string[] = [];
+        for (const it of items) {
+          const title = it.title.trim();
+          if (!title) continue;
+          // 重名不覆盖，且这批里前面建过的也算已存在（同一目标不会建出两篇）
+          const p = dedupePath(notePath(it.dir, title), (x) => x in files);
+          if (p in files) continue;
+          files[p] = noteBody(title);
+          made.push(p);
+        }
+        if (made.length === 0) return [];
+        set({ files, dirty: true, planStale: true });
+        return made;
       },
 
       // 目录不是"一个空壳"：要建就在里面放一个隐藏的标识文件（理由见 lib/folders.ts）。

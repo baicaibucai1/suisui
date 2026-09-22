@@ -9,6 +9,7 @@ import {
   contextOf,
   dirOf,
   lineOffset,
+  missingNotes,
   noteNameOf,
   outgoingOf,
   outlineOf,
@@ -236,6 +237,36 @@ console.log('\n== 本页大纲（右栏）');
 
   // 大纲显示的净字 = 跳转匹配的净字，同一个函数两头用（收尾井号是 HEAD_RE 的事，不归它）
   eq('净字函数自己站得住', cleanHeading('见 [[草稿|别名]]'), '见 草稿');
+}
+
+console.log('\n== 全库待建（missingNotes）');
+{
+  // 同一个目标被多篇引用：只该出现一次（不然界面上就是十个一样的待办）
+  const files = {
+    'notes/甲.md': '写了 [[读书笔记]] 和 [[乙]]。',
+    'notes/乙.md': '也提到 [[读书笔记]]。',
+    'thoughts/丙.md': '这里引 [[读书笔记]]，还有 [[散记]]。',
+  };
+  const m = missingNotes(files);
+  eq('去重后只剩两个目标', m.map((x) => x.target), ['读书笔记', '散记']);
+  eq('被引用最多排最前', m[0].from.length, 3);
+  eq('引用它的那几篇都在', m[0].from, ['notes/甲.md', 'notes/乙.md', 'thoughts/丙.md']);
+  // 落点 = 引用者所在目录投票，notes 两票赢过 thoughts 一票
+  eq('建到引用最多的目录', m[0].dir, 'notes');
+  eq('只有一篇引用就建在它旁边', m[1].dir, 'thoughts');
+
+  // 已经存在的目标不算"没建" —— 三种写法（全路径 / 文件名 / 标题）都该被认出来
+  const exist = {
+    'notes/甲.md': '[[乙]] [[notes/乙.md]] [[notes/乙]]',
+    'notes/乙.md': '# 乙',
+  };
+  eq('指到了就不算待建', missingNotes(exist), []);
+
+  // 代码块里的 [[xxx]] 是示例，不该被当成"待建"
+  eq('代码块不算', missingNotes({ 'a.md': '```\n[[示例]]\n```\n' }), []);
+
+  // 全在根目录：没有目录可投，退回落点
+  eq('根目录退回落点', missingNotes({ 'a.md': '[[孤篇]]' }, 'thoughts')[0].dir, 'thoughts');
 }
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败`);
