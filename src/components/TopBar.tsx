@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { BRANCH, OWNER, REPO, useStore } from '../lib/store';
-import { Alert, ArrowDown, ArrowUp, Branch, Check, Menu, Refresh } from './icons';
+import { Alert, ArrowDown, ArrowUp, Branch, Check, Menu, PanelRight, Refresh } from './icons';
 
 /*
  * 顶栏 = 这一页的"抬头"。
@@ -53,6 +53,8 @@ export default function TopBar() {
   const planStale = useStore((s) => s.planStale);
   const drawer = useStore((s) => s.drawer);
   const setDrawer = useStore((s) => s.setDrawer);
+  const rightOpen = useStore((s) => s.rightOpen);
+  const setRightOpen = useStore((s) => s.setRightOpen);
 
   const push = changes.filter((c) => c.kind.startsWith('push')).length;
   const pull = changes.filter((c) => c.kind.startsWith('pull')).length;
@@ -130,6 +132,20 @@ export default function TopBar() {
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/*
+            右栏开关。右栏是"看得见的资料"（大纲、关系），不是数据动作，
+            所以开关归顶栏 —— 跟「刷新差异」一样是"看"的这一排。
+          */}
+          <button
+            data-right-toggle
+            onClick={() => setRightOpen(!rightOpen)}
+            aria-pressed={rightOpen}
+            aria-label="大纲右栏"
+            title={rightOpen ? '收起右栏（大纲 / 关系）' : '展开右栏（大纲 / 关系）'}
+            className={`${GHOST} w-8 max-md:hidden`}
+          >
+            <PanelRight size={14} className={rightOpen ? 'text-accent' : ''} />
+          </button>
           <button
             data-refresh
             onClick={() => void refreshPlan()}

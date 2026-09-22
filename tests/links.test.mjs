@@ -5,10 +5,13 @@
 // 真正在编辑器里点得动是 e2e 的事（tests/link-e2e.mjs）。
 import {
   backlinksOf,
+  cleanHeading,
   contextOf,
   dirOf,
+  lineOffset,
   noteNameOf,
   outgoingOf,
+  outlineOf,
   parseTags,
   parseWiki,
   resolveWiki,
@@ -194,6 +197,45 @@ console.log('\n== 上下文片段');
   const c = contextOf(text, link, 6);
   eq('含链接本身', c.includes('[[开张]]'), true);
   eq('两边带省略号', c.startsWith('…') && c.endsWith('…'), true);
+}
+
+console.log('\n== 本页大纲（右栏）');
+{
+  const text = [
+    '# 开张',
+    '',
+    '第一段。',
+    '',
+    '## 第二段',
+    '内容 **加粗** 和 `代码`。',
+    '',
+    '```',
+    '# 这不是标题，是代码注释',
+    '```',
+    '',
+    '###第三级没空格不算',
+    '####  收尾井号比开头少  ###',
+    '最后一段 [[草稿#小节]]。',
+  ].join('\n');
+
+  const ol = outlineOf(text);
+  eq('认出三个标题', ol.map((h) => h.text), ['开张', '第二段', '收尾井号比开头少']);
+  eq('级别跟着井号', ol.map((h) => h.level), [1, 2, 4]);
+  eq('行号是正文里的真实行', ol.map((h) => h.line), [0, 4, 12]);
+
+  eq('行内记号剥干净', outlineOf('# 带 **粗** 和 `码`')[0].text, '带 粗 和 码');
+  eq('wiki 语法只留名字', outlineOf('## 见 [[草稿#小节]]')[0].text, '见 草稿#小节');
+  eq('结尾的收尾井号剥掉', outlineOf('## 收尾 ##')[0].text, '收尾');
+  eq('空文本给空数组', outlineOf(''), []);
+  eq('没有标题给空数组', outlineOf('就两行\n正文。'), []);
+
+  // 源码模式跳转靠行号算偏移 —— 这两个数对不上，光标就落错行
+  const lines = text.split('\n');
+  eq('偏移 = 前面所有行加换行', lineOffset(lines, 4), lines.slice(0, 4).join('\n').length + 1);
+  eq('第 0 行偏移是 0', lineOffset(lines, 0), 0);
+
+  // 大纲显示的净字 = 跳转匹配的净字，同一个函数两头用（收尾井号是 HEAD_RE 的事，不归它）
+  eq('净字函数自己站得住', cleanHeading('见 [[草稿|别名]]'), '见 草稿');
 }
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败`);

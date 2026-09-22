@@ -15,7 +15,7 @@ import {
   normalizeDir,
   type TreeNode,
 } from '../lib/folders';
-import { tagsOf } from '../lib/links';
+import { tagsOf, titleOf } from '../lib/links';
 import {
   Chevron,
   Close,
@@ -29,6 +29,7 @@ import {
   Paper,
   Pen,
   Plus,
+  Search,
   Tag,
   Trash,
   Upload,
@@ -92,6 +93,8 @@ export default function FileTree() {
   const [pendingDir, setPendingDir] = useState<string | null>(null);
   /** 添加附件：被挡下来的那些（太大 / 不是图片或 PDF）要说清楚为什么 */
   const [attachErr, setAttachErr] = useState<string | null>(null);
+  /** 顶部搜索框：按文件名 / 笔记标题过滤。空串 = 没在搜，照常显示整棵树。 */
+  const [query, setQuery] = useState('');
   const pickRef = useRef<HTMLInputElement>(null);
 
   /** 附件落在哪儿：跟着当前打开的那篇走，没有就 thoughts */
@@ -137,6 +140,27 @@ export default function FileTree() {
 
   const kindExt = NOTE_KINDS.find((k) => k.id === noteKind)?.ext ?? 'md';
   const notePreview = notePath(noteDir, noteTitle, undefined, kindExt);
+
+  /*
+   * 搜索：只认**文件名和标题**（ Obsidian 顶栏那个搜索框的轻量版 —— 全文搜索
+   * 是另一档工程，这里先让"我知道那篇叫什么，就是懒得在树里找"够用）。
+   * 命中时整棵树换成平铺的一列 —— 同一个标签筛选的道理：命中散在不同目录里，
+   * 硬套回树里只会让人找不到。`null` = 没在搜。
+   */
+  const searchHits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return Object.keys(files)
+      .filter(
+        (p) =>
+          typeof files[p] === 'string' &&
+          !isFolderFile(p) &&
+          (showAll || !isProgramArtifact(p)) &&
+          (p.slice(p.lastIndexOf('/') + 1).toLowerCase().includes(q) ||
+            titleOf(p).toLowerCase().includes(q)),
+      )
+      .sort((a, b) => a.localeCompare(b, 'zh'));
+  }, [files, query, showAll]);
 
   const submit = () => {
     if (!draft.trim()) return;
@@ -398,6 +422,48 @@ export default function FileTree() {
         />
       </Section>
 
+      {/* 搜索框：顶栏正下方。Esc 清掉，× 也行 */}
+      <div className="px-2.5 pb-1.5">
+        <div className="relative">
+          <Search
+            size={12}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
+          />
+          <input
+            data-note-search
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuery('');
+            }}
+            placeholder="搜索文件名或标题"
+            className="w-full rounded-[8px] border border-line bg-surface py-[5px] pl-7 pr-6 text-[12px] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
+          />
+          {query && (
+            <button
+              data-note-search-clear
+              onClick={() => setQuery('')}
+              title="清空搜索"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-[5px] p-0.5 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Close size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {searchHits !== null && (
+        <div
+          data-search-banner
+          className="mx-2.5 mb-1.5 flex shrink-0 items-center gap-1.5 rounded-[8px] border border-line bg-surface-2 px-2 py-1.5"
+        >
+          <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-2">
+            文件名 / 标题含「{query.trim()}」
+          </span>
+          <span className="shrink-0 text-[10.5px] text-ink-3">{searchHits.length} 篇</span>
+        </div>
+      )}
+
       {attachErr && (
         <div
           data-attach-error
@@ -529,7 +595,7 @@ export default function FileTree() {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
-        {!tagHits && total === 0 && (
+        {!tagHits && searchHits === null && total === 0 && (
           <div className="px-3 py-6 text-center">
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               还没有文件
@@ -571,8 +637,24 @@ export default function FileTree() {
           </div>
         )}
 
+        {searchHits !== null && searchHits.length === 0 && (
+          <div data-search-empty className="px-3 py-6 text-center">
+            <p className="text-[12.5px] leading-relaxed text-ink-3">
+              没有文件名或标题含「{query.trim()}」的篇
+            </p>
+            <button
+              onClick={() => setQuery('')}
+              className="mt-2 rounded-[8px] border border-line bg-surface px-2.5 py-[5px] text-[12px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              清空搜索
+            </button>
+          </div>
+        )}
+
         <div className="space-y-[1px]">
-          {tagHits ? (
+          {searchHits !== null ? (
+            searchHits.map((p) => renderFile(p, 0))
+          ) : tagHits ? (
             tagHits.map((p) => renderFile(p, 0))
           ) : (
             <>

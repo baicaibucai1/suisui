@@ -230,3 +230,57 @@ export function wikiLinkPlugin(opts: WikiOpts) {
       }),
   );
 }
+
+/*
+ * 跳转高亮（su-flash）。
+ *
+ * ⚠️ 不能直接 `dom.classList.add('su-flash')` —— ProseMirror 的 MutationObserver
+ * 把 contenteditable 里**任何** DOM 改动（连 class 都算）当成"被外力动过"，
+ * 把那段标记成脏、下一拍就重绘，类刚加上就被抹掉（实测 <150ms，flash 等于没加）。
+ * 正路是走 PM 自己的 decoration：装饰是「DOM 该长什么样」的唯一权威，
+ * 重绘多少次都在。真实踩过：大纲跳转的高亮当场蒸发。
+ */
+
+const flashKey = new PluginKey('suisui-flash');
+
+type Flash = { pos: number; end: number };
+
+export function flashPlugin() {
+  return $prose(
+    () =>
+      new Plugin({
+        key: flashKey,
+        state: {
+          init: () => null as Flash | null,
+          apply: (tr, old) => {
+            const meta = tr.getMeta(flashKey) as Flash | null | undefined;
+            if (meta !== undefined) return meta;
+            // 高亮还挂着的时候用户打了字：位置跟着文档映射挪，不然会钉死在旧偏移上
+            return old ? { pos: tr.mapping.map(old.pos), end: tr.mapping.map(old.end) } : null;
+          },
+        },
+        props: {
+          decorations: (state) => {
+            const f = flashKey.getState(state) as Flash | null;
+            if (!f) return DecorationSet.empty;
+            try {
+              return DecorationSet.create(state.doc, [
+                Decoration.node(f.pos, f.end, { class: 'su-flash' }),
+              ]);
+            } catch {
+              return DecorationSet.empty;
+            }
+          },
+        },
+      }),
+  );
+}
+
+/** 给 `pos` 处的块级节点挂 1.4s 的 su-flash（装饰版 —— 重绘不掉，到期自己摘）。 */
+export function flashNode(view: EditorView, pos: number, end: number): void {
+  if (view.isDestroyed) return;
+  view.dispatch(view.state.tr.setMeta(flashKey, { pos, end }));
+  window.setTimeout(() => {
+    if (!view.isDestroyed) view.dispatch(view.state.tr.setMeta(flashKey, null));
+  }, 1400);
+}

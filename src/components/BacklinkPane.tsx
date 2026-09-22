@@ -32,7 +32,21 @@ function Row({ label, count, children }: { label: string; count: number; childre
   );
 }
 
-export default function BacklinkPane({ path, text }: { path: string; text: string }) {
+/**
+ * @param variant 渲染成哪种壳：
+ *   - `bottom`（默认）：正文下面那一条，有关系才出现（整块不渲染）；
+ *   - `side`：右栏里的一节，永远占位 —— 没有关系时给一句轻提示，
+ *     不然右栏会看起来"少了一块"。data-* 两边完全同名，e2e 不用分叉。
+ */
+export default function BacklinkPane({
+  path,
+  text,
+  variant = 'bottom',
+}: {
+  path: string;
+  text: string;
+  variant?: 'bottom' | 'side';
+}) {
   const files = useStore((s) => s.files);
   const setCurrent = useStore((s) => s.setCurrent);
   const setTagFilter = useStore((s) => s.setTagFilter);
@@ -47,7 +61,15 @@ export default function BacklinkPane({ path, text }: { path: string; text: strin
     return outgoingOf(text, Object.keys(files), dir).filter((o) => !o.path);
   }, [text, files, path]);
 
-  if (tags.length === 0 && back.length === 0 && missing.length === 0) return null;
+  if (tags.length === 0 && back.length === 0 && missing.length === 0) {
+    if (variant === 'bottom') return null;
+    return (
+      <div data-rel-empty className="px-1 py-1.5 text-[11.5px] leading-relaxed text-ink-3">
+        还没有链接关系 —— 在正文里写 <span className="font-mono">[[另一篇]]</span> 或{' '}
+        <span className="font-mono">#标签</span>，这里就会亮起来。
+      </div>
+    );
+  }
 
   const openAt = (from: string, heading: string) => {
     setCurrent(from);
@@ -57,9 +79,13 @@ export default function BacklinkPane({ path, text }: { path: string; text: strin
   return (
     <div
       data-backlinks
-      className="shrink-0 border-t border-line bg-paper-2/60 px-5 py-2.5 max-md:px-3.5"
+      className={
+        variant === 'side'
+          ? 'min-w-0 flex-1 space-y-2.5'
+          : 'shrink-0 border-t border-line bg-paper-2/60 px-5 py-2.5 max-md:px-3.5'
+      }
     >
-      <div className="mx-auto max-w-[46rem] space-y-1.5">
+      <div className={variant === 'side' ? 'space-y-2.5' : 'mx-auto max-w-[46rem] space-y-1.5'}>
         {tags.length > 0 && (
           <Row label="标签" count={tags.length}>
             <div className="flex flex-wrap gap-1">

@@ -346,3 +346,51 @@ export function contextOf(text: string, link: WikiLink, span = 30): string {
   const b = Math.min(text.length, link.to + span);
   return (a > 0 ? '…' : '') + text.slice(a, b).replace(/\n+/g, ' ') + (b < text.length ? '…' : '');
 }
+
+/*
+ * 本页大纲（右栏那份标题目录，Obsidian 叫 On this page）。
+ *
+ * 放在 links.ts 而不是单开一个文件，是刻意的：它要用 stripCode，
+ * 而这个文件的原则是「零依赖纯函数，Node 直接 import 就能测」——
+ * 单开一个 `outline.ts` 就得 import './links'（无扩展名），单测当场跑不起来。
+ */
+
+export type OutlineItem = { level: number; text: string; line: number };
+
+/**
+ * 标题文字的「净版」：
+ * - `[[笔记#小节]]` 只留名字 —— 大纲显示的不是链接语法
+ * - `*` `_` `` ` `` 这些行内记号剥掉 —— 右栏是目录不是源码
+ *
+ * 大纲解析和源码模式跳转**必须用同一个函数**：一边拿它显示，
+ * 一边拿它匹配 `# 原文`，两处各写一份迟早对不上。
+ */
+export function cleanHeading(raw: string): string {
+  return raw
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')
+    .replace(/[*_`]+/g, '')
+    .trim();
+}
+
+const HEAD_RE = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/;
+
+/** 正文 → 大纲。只认 ATX 标题；代码块里的 `# 注释` 不是标题（stripCode 把围栏涂空，行数不变）。 */
+export function outlineOf(text: string): OutlineItem[] {
+  if (!text) return [];
+  const lines = (text.includes('```') ? stripCode(text) : text).split('\n');
+  const items: OutlineItem[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(HEAD_RE);
+    if (!m) continue;
+    const t = cleanHeading(m[2]);
+    if (t) items.push({ level: m[1].length, text: t, line: i });
+  }
+  return items;
+}
+
+/** 源码模式跳转用：第 line 行在整篇文本里的字符偏移。 */
+export function lineOffset(lines: string[], line: number): number {
+  let off = 0;
+  for (let i = 0; i < line; i++) off += lines[i].length + 1;
+  return off;
+}

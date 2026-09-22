@@ -438,3 +438,20 @@ export const PageNext = (p: IconProps) => (
     <path d="M6.2 3.6 10.6 8l-4.4 4.4" />
   </Svg>
 );
+
+/** 放大镜（文件树的搜索框） */
+export const Search = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="7.2" cy="7.2" r="4.1" />
+    <path d="m10.4 10.4 3.1 3.1" />
+  </Svg>
+);
+
+/** 右栏开关：一块板子，右半边亮着 */
+export const PanelRight = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.2" y="3.1" width="11.6" height="9.8" rx="1.4" />
+    <path d="M9.4 3.1v9.8" />
+    <path d="M11 5.6h1.4M11 7.8h1.4" />
+  </Svg>
+);

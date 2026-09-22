@@ -3,6 +3,7 @@ import TopBar from './components/TopBar';
 import FileTree from './components/FileTree';
 import ChangeList from './components/ChangeList';
 import SideDock from './components/SideDock';
+import RightPane from './components/RightPane';
 import { EditorLoading, EmptyState } from './components/EmptyState';
 import StatusBar from './components/StatusBar';
 import { useStore } from './lib/store';
@@ -29,6 +30,7 @@ export default function App() {
   const setDrawer = useStore((s) => s.setDrawer);
   const current = useStore((s) => s.current);
   const settings = useStore((s) => s.settings);
+  const rightOpen = useStore((s) => s.rightOpen);
 
   useEffect(() => {
     if (token) void refreshPlan();
@@ -97,6 +99,19 @@ export default function App() {
             <EmptyState />
           )}
         </main>
+        {/*
+          右栏：大纲 + 关系（布局对齐 Obsidian 的第三条柱子）。
+          手机上整条不渲染（组件内部用同一条媒体查询自己摘自己，
+          关系面板那会儿回正文底部）；桌面可用顶栏的按钮收起。
+        */}
+        {rightOpen && (
+          <aside
+            data-rightpane
+            className="hidden w-[250px] shrink-0 flex-col border-l border-line bg-paper-2/30 md:flex"
+          >
+            <RightPane />
+          </aside>
+        )}
       </div>
       <StatusBar />
       {settings && (

@@ -22,12 +22,13 @@ import { toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { useStore } from '../lib/store';
 import { EMPTY_ACTIVE, activeFromText, applyTool, linkAt } from '../lib/mdkit';
 import type { Active, ToolId } from '../lib/mdkit';
-import { dirOf, resolveFile, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
+import { cleanHeading, dirOf, lineOffset, resolveFile, suggestNotes, titleOf, unescapeWiki } from '../lib/links';
 import { base64ToBytes, blobOf, isImagePath, mimeOf } from '../lib/binary';
-import { insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
+import { flashNode, flashPlugin, insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
 import type { EmbedInfo } from '../lib/pm-links';
 import type { WikiQuery } from '../lib/pm-links';
 import { isRichPath } from '../lib/rich';
+import { useMedia, WIDE } from '../lib/media';
 import WikiHints from './WikiHints';
 import type { HintItem } from './WikiHints';
 import BacklinkPane from './BacklinkPane';
@@ -115,6 +116,9 @@ export default function EditorPane() {
   const pendingHeading = useStore((s) => s.pendingHeading);
   const jumpTick = useStore((s) => s.jumpTick);
   const setPendingHeading = useStore((s) => s.setPendingHeading);
+  // 桌面上关系面板搬进了右栏（App.tsx），这里只在窄屏（手机）挂在正文底部。
+  // 同一组件永远只挂一份 —— 两边都挂的话 Playwright 的 strict 选择器当场冲突。
+  const wide = useMedia(WIDE);
   const [mode, setMode] = useState<Mode>('wysiwyg');
   const [fail, setFail] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -405,6 +409,8 @@ export default function EditorPane() {
             openEmbed,
           }),
         );
+        // 跳转高亮（su-flash）—— 装饰版，直接改 DOM 的类会被 PM 重绘抹掉
+        crepe.editor.use(flashPlugin());
         await crepe.create();
         if (disposed) {
           await crepe.destroy();
@@ -562,11 +568,39 @@ export default function EditorPane() {
   }, [mode, isMd, openWiki, setTagFilter, tagFilter]);
 
   /*
-   * 点 `[[某篇#某个小节]]` 跳过去之后，滚到那个小节并闪一下。
+   * 点大纲（或 `[[某篇#某个小节]]` 跳过去）之后，滚到那个小节。
    * 编辑器是异步建的，所以轮询等它就绪 —— 跟「创建笔记后放光标」那条一个套路。
+   * 两种模式各有各的滚法：
+   *   所见即所得 —— 找到那个 heading 节点的 DOM，scrollIntoView + 闪一下；
+   *   源码 —— textarea 里没有小节可滚，按大纲留的行号算偏移，把那一行滚到视口中间。
    */
   useEffect(() => {
-    if (!pendingHeading || mode !== 'wysiwyg' || !isMd) return;
+    if (!pendingHeading || !isMd) return;
+
+    if (mode === 'source') {
+      const ta = taRef.current;
+      if (!ta) return;
+      const lines = ta.value.split('\n');
+      const want = pendingHeading.trim();
+      let line = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(/^#{1,6}\s+(.+?)(?:\s+#+)?\s*$/);
+        // 跟右栏大纲用同一个净字函数 —— 那边显示什么，这边就按什么找
+        if (m && cleanHeading(m[1]) === want) {
+          line = i;
+          break;
+        }
+      }
+      setPendingHeading(null);
+      if (line < 0) return;
+      const off = lineOffset(lines, line);
+      ta.focus();
+      ta.setSelectionRange(off, off);
+      const lh = parseFloat(getComputedStyle(ta).lineHeight) || 22;
+      ta.scrollTop = Math.max(0, line * lh - ta.clientHeight / 2);
+      return;
+    }
+
     let tries = 0;
     const timer = window.setInterval(() => {
       const crepe = crepeRef.current;
@@ -583,15 +617,19 @@ export default function EditorPane() {
           const view = ctx.get(editorViewCtx);
           const want = pendingHeading.trim();
           let pos = -1;
+          let end = -1;
           view.state.doc.descendants((node, p) => {
-            if (pos < 0 && node.type.name === 'heading' && node.textContent.trim() === want) pos = p;
+            if (pos < 0 && node.type.name === 'heading' && node.textContent.trim() === want) {
+              pos = p;
+              end = p + node.nodeSize;
+            }
           });
           if (pos < 0) return false;
           const dom = view.nodeDOM(pos);
           if (!(dom instanceof HTMLElement)) return false;
           dom.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          dom.classList.add('su-flash');
-          window.setTimeout(() => dom.classList.remove('su-flash'), 1400);
+          // 高亮走装饰（flashNode）：直接改 DOM 的类会被 PM 重绘当场抹掉
+          flashNode(view, pos, end);
           return true;
         });
       } catch {
@@ -799,7 +837,7 @@ export default function EditorPane() {
         反向链接 / 标签 / 还没建的那些篇。没有关系的篇它整块不渲染，
         所以不用给它留一条永远占着位置的边栏。
       */}
-      {isMd && <BacklinkPane path={current} text={content} />}
+      {isMd && !wide && <BacklinkPane path={current} text={content} />}
 
       {hint && mode === 'wysiwyg' && (
         <WikiHints

@@ -69,6 +69,11 @@ type State = {
    */
   tagFilter: string | null;
   /**
+   * 右侧边栏（大纲 + 关系）开不开。**不持久化** —— 跟 tagFilter 一条理由：
+   * 下次打开若右栏莫名其妙没了，第一反应是坏了而不是"我上次收起的"。
+   */
+  rightOpen: boolean;
+  /**
    * 点链接跳过去后要滚到哪个小节。配合 `jumpTick` 用：
    * 同一篇里点 `[[这篇#小节]]` 时 current 没变，光靠它触发不了滚动。
    */
@@ -110,6 +115,7 @@ type State = {
    */
   openWiki: (target: string, heading?: string) => { path: string; created: boolean } | null;
   setTagFilter: (tag: string | null) => void;
+  setRightOpen: (v: boolean) => void;
   setPendingHeading: (h: string | null) => void;
 };
 
@@ -137,6 +143,7 @@ export const useStore = create<State>()(
       dav: { url: 'https://dav.jianguoyun.com/dav/碎碎', user: '', pass: '' },
       od: { token: '', basePath: '碎碎' },
       tagFilter: null,
+      rightOpen: true,
       pendingHeading: null,
       jumpTick: 0,
 
@@ -306,6 +313,7 @@ export const useStore = create<State>()(
       },
 
       setTagFilter: (tag) => set({ tagFilter: tag }),
+      setRightOpen: (v) => set({ rightOpen: v }),
       setPendingHeading: (h) => set({ pendingHeading: h, jumpTick: get().jumpTick + 1 }),
     }),
     {
