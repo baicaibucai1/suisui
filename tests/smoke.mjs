@@ -37,9 +37,9 @@ await page.screenshot({ path: `${OUT}/01-empty.png` });
 step('点「刷新差异」');
 await page.click('[data-refresh]');
 await page.waitForTimeout(3500);
-// 顶栏整条拿掉之后，差异状况说在左下角 dock 的第一行
-const beforeText = await page.textContent('[data-dock]');
-console.log('dock:', (beforeText ?? '').replace(/\s+/g, ' ').trim().slice(0, 160));
+// 差异状况说在「待同步」那块的抬头里
+const beforeText = await page.textContent('[data-changes]');
+console.log('待同步区:', (beforeText ?? '').replace(/\s+/g, ' ').trim().slice(0, 160));
 await page.screenshot({ path: `${OUT}/02-plan.png` });
 
 step('点「同步」');
@@ -172,10 +172,11 @@ const inEditor = ((await page.locator('.milkdown').first().innerText().catch(() 
   .trim();
 console.log('  编辑器里:', inEditor.slice(0, 60));
 ok('编辑器已打开这篇', inEditor.includes('雨天 散步'));
-const barAfter = (await page.textContent('[data-dock]')).replace(/\s+/g, ' ').trim();
-console.log('  dock:', barAfter.slice(0, 80));
-ok('dock 说「还没比对」', barAfter.includes('还没比对'));
-ok('dock 不再说「与远端一致」', !barAfter.includes('与远端一致'));
+// 差异状况说在「待同步」那块的抬头里（dock 已经退回一行，只管动手）
+const barAfter = (await page.textContent('[data-changes]')).replace(/\s+/g, ' ').trim();
+console.log('  待同步区:', barAfter.slice(0, 80));
+ok('待同步区说「还没比对」', barAfter.includes('还没比对'));
+ok('待同步区不再说「与远端一致」', !barAfter.includes('与远端一致'));
 console.log(
   '  光标诊断:',
   JSON.stringify(

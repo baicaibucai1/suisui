@@ -5,6 +5,18 @@ import { isProgramArtifact } from '../lib/visible';
 import type { ChangeKind } from '../lib/decide';
 import { Alert, ArrowDown, ArrowUp, Check, EyeOff } from './icons';
 
+/*
+ * 「待同步」这一块 = 抬头 + 清单。
+ *
+ * 抬头那行本来只有「待同步」四个字和一条横杠，剩下的地方空着 ——
+ * 差异状况（↑待推送 / ↓待拉取 / ⚠冲突）就摆在那儿：它说的是**下面这份清单**
+ * 的构成，跟清单在同一个抬头里，不用在底下另起一条横幅再说一遍。
+ * dock 因此退回一行，只管动手（同步 / 刷新 / 设置）。
+ *
+ * ⚠️ 空态不能只看 changes：本地改完还没比对时 changes 是上一轮的（可能是空的），
+ * 这时候说「本地和远端一致」是在撒谎 —— 得先看 planStale。
+ */
+
 function kindIcon(kind: ChangeKind) {
   if (kind === 'conflict') return <Alert size={12} strokeWidth={2} />;
   return isPush(kind) ? <ArrowUp size={12} strokeWidth={2} /> : <ArrowDown size={12} strokeWidth={2} />;
@@ -21,8 +33,25 @@ function kindTile(kind: ChangeKind) {
   return isPush(kind) ? 'bg-ok-soft' : 'bg-accent-soft';
 }
 
+/** 抬头上一段「↑ 3 待推送」 */
+function Seg({ tone, children }: { tone: 'push' | 'pull' | 'conflict'; children: React.ReactNode }) {
+  const skin = {
+    push: 'text-ok',
+    pull: 'text-accent',
+    conflict: 'text-danger',
+  }[tone];
+  return (
+    <span
+      className={`flex shrink-0 items-center gap-1 text-[10.5px] font-medium ${skin}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function ChangeList() {
   const changes = useStore((s) => s.changes);
+  const planStale = useStore((s) => s.planStale);
   const showAll = useStore((s) => s.showAll);
   const setShowAll = useStore((s) => s.setShowAll);
   const setCurrent = useStore((s) => s.setCurrent);
@@ -33,24 +62,60 @@ export default function ChangeList() {
     return { visible, hidden: changes.length - visible.length };
   }, [changes, showAll]);
 
+  const push = changes.filter((c) => c.kind.startsWith('push')).length;
+  const pull = changes.filter((c) => c.kind.startsWith('pull')).length;
+  const conflict = changes.filter((c) => c.kind === 'conflict').length;
+
   return (
-    <div className="flex max-h-[38%] min-h-0 shrink-0 flex-col border-t border-line">
-      <div className="flex h-9 shrink-0 items-center gap-2 pl-4 pr-2.5">
-        <span className="eyebrow">待同步</span>
-        {visible.length > 0 && (
-          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10.5px] font-medium text-ink-2">
-            {visible.length}
-          </span>
+    <div
+      data-changes
+      className="flex max-h-[38%] min-h-0 shrink-0 flex-col border-t border-line"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-2 overflow-hidden pl-4 pr-2.5">
+        <span className="eyebrow shrink-0">待同步</span>
+        {planStale ? (
+          <Seg tone="conflict">
+            <Alert size={10} strokeWidth={2} />
+            还没比对
+          </Seg>
+        ) : (
+          <>
+            {push > 0 && (
+              <Seg tone="push">
+                <ArrowUp size={10} strokeWidth={2} />
+                {push} 待推送
+              </Seg>
+            )}
+            {pull > 0 && (
+              <Seg tone="pull">
+                <ArrowDown size={10} strokeWidth={2} />
+                {pull} 待拉取
+              </Seg>
+            )}
+            {conflict > 0 && (
+              <Seg tone="conflict">
+                <Alert size={10} strokeWidth={2} />
+                {conflict} 冲突
+              </Seg>
+            )}
+          </>
         )}
         <span className="h-px min-w-2 flex-1 bg-line" />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
         {changes.length === 0 ? (
-          <div className="flex items-center gap-2 rounded-[7px] bg-ok-soft px-2 py-[6px] text-[12px] text-ok">
-            <Check size={13} strokeWidth={2} className="shrink-0" />
-            <span className="font-medium">本地和远端一致</span>
-          </div>
+          planStale ? (
+            <div className="flex items-center gap-2 rounded-[7px] bg-warn-soft px-2 py-[6px] text-[12px] text-warn">
+              <Alert size={13} strokeWidth={2} className="shrink-0" />
+              <span className="font-medium">本地改过了，同步时会先比对</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-[7px] bg-ok-soft px-2 py-[6px] text-[12px] text-ok">
+              <Check size={13} strokeWidth={2} className="shrink-0" />
+              <span className="font-medium">本地和远端一致</span>
+            </div>
+          )
         ) : (
           <>
             {visible.length === 0 ? (

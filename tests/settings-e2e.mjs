@@ -73,6 +73,11 @@ step('入口在左下角');
   ok('页面里没有顶栏了', (await page.locator('header').count()) === 0);
   ok('刷新差异也在 dock 里', (await page.locator('[data-dock] [data-refresh]').count()) === 1);
 
+  // dock 只管动手，状况并进了上面的「待同步」抬头 —— 一行装得下（两行那条试过，臃肿）
+  const dockH = (await page.locator('[data-dock]').boundingBox()).height;
+  ok('dock 只有一行', dockH <= 56, `高 ${dockH}px`);
+  ok('三颗按钮横排', (await page.locator('[data-dock] button').count()) === 3);
+
   const aside = await page.locator('[data-drawer]').boundingBox();
   const dock = await page.locator('[data-dock]').boundingBox();
   ok('dock 贴着左边缘', !!dock && Math.abs(dock.x - aside.x) < 1, JSON.stringify(dock));
@@ -83,9 +88,15 @@ step('入口在左下角');
   );
 
   const sync = await page.locator('[data-sync]').boundingBox();
+  const refresh = await page.locator('[data-refresh]').boundingBox();
   const gear = await page.locator('[data-settings]').boundingBox();
-  ok('同步和齿轮同一行', Math.abs(sync.y - gear.y) < 2, `${sync.y} / ${gear.y}`);
-  ok('齿轮在最右、同步占剩下的宽度', gear.x > sync.x && sync.x + sync.width > 200, JSON.stringify({ sync, gear }));
+  ok('三颗按钮同一行', Math.abs(sync.y - gear.y) < 2 && Math.abs(sync.y - refresh.y) < 2, `${sync.y} / ${refresh.y} / ${gear.y}`);
+  // 从左到右：同步（占剩下的宽度）→ 刷新 → 齿轮
+  ok(
+    '同步占大头、刷新居中、齿轮在最右',
+    sync.width > 100 && refresh.x >= sync.x + sync.width && gear.x >= refresh.x + refresh.width,
+    JSON.stringify({ sync, refresh, gear }),
+  );
   await page.screenshot({ path: `${OUT}/08-左下角-dock.png` });
 }
 
