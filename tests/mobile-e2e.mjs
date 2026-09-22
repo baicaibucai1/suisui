@@ -153,7 +153,8 @@ step('md 工具栏：横滚而不是换行');
 
 step('顶栏 / 状态栏：手机上只留必要的');
 {
-  ok('仓库坐标藏起来了', !(await page.locator('header >> text=baicaibucai1').isVisible()));
+  // 顶栏整条没了，仓库坐标也一并走（设置面板里还写着），手机上更没有
+  ok('顶栏整个拿掉了', (await page.locator('header').count()) === 0);
   // 两个按钮的文字都要藏干净。漏一处不是「少藏一处」，而是文字在 36px 的方按钮里
   // 被挤成竖排 —— 截图里抓到过这种，断言不覆盖就会一直漏下去。
   for (const id of ['data-refresh', 'data-sync']) {
@@ -261,7 +262,7 @@ step('桌面（1500×920）：一个字都不该变');
   const box = await d.locator('[data-drawer]').boundingBox();
   ok('侧栏常驻、272px、贴着左边缘', Math.abs(box.x) < 1 && Math.abs(box.width - 272) < 1, JSON.stringify(box));
 
-  ok('仓库坐标回来了', await d.locator('header >> text=baicaibucai1').isVisible());
+  ok('桌面上也没有顶栏', (await d.locator('header').count()) === 0);
   ok('同步按钮文字回来了', await d.locator('[data-sync] span').isVisible());
 
   const statusSpans = await d.evaluate(() =>

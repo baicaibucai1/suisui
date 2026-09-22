@@ -72,7 +72,8 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 920 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message.slice(0, 200)));
 
-const topBar = async () => (await page.textContent('header')).replace(/\s+/g, ' ').trim();
+// 差异状况说在左下角 dock 的第一行（顶栏整条已拿掉）
+const topBar = async () => (await page.textContent('[data-dock]')).replace(/\s+/g, ' ').trim();
 // 先等它真的忙起来，再等空闲。只等「按钮不 disabled」会在 React 重渲染之前就返回，
 // 于是断言全跑在任务开始之前 —— 表现为随机假红/假绿。
 const waitIdle = async () => {

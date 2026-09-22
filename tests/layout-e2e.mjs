@@ -117,7 +117,7 @@ step('关系面板搬进了右栏');
 }
 await page.screenshot({ path: `${OUT}/23-右栏关系.png` });
 
-step('顶栏按钮收起 / 展开右栏');
+step('右栏自己收起 / 展开（开关在右栏头上，收起后留一条窄轨）');
 {
   await page.locator('[data-right-toggle]').click();
   await page.waitForTimeout(300);

@@ -64,14 +64,14 @@ ok(
 );
 
 /*
- * 入口位置：设置和同步都在**左下角那条 dock** 里，不在顶栏。
- * 顶栏只说状况（仓库、差异胶囊），动手的按钮沉到左下角 ——
- * 这边守着，免得哪天有人图省事又把齿轮塞回顶栏去。
+ * 入口位置：设置和同步都在**左下角那条 dock** 里。
+ * 顶栏已经整条拿掉了 —— 状况（差异胶囊）和动作（刷新 / 同步 / 设置）都在 dock 上，
+ * 这边守着，免得哪天有人图省事又把一条顶栏加回来。
  */
 step('入口在左下角');
 {
-  ok('顶栏里没有齿轮了', (await page.locator('header [data-settings]').count()) === 0);
-  ok('顶栏里也没有同步按钮了', (await page.locator('header [data-sync]').count()) === 0);
+  ok('页面里没有顶栏了', (await page.locator('header').count()) === 0);
+  ok('刷新差异也在 dock 里', (await page.locator('[data-dock] [data-refresh]').count()) === 1);
 
   const aside = await page.locator('[data-drawer]').boundingBox();
   const dock = await page.locator('[data-dock]').boundingBox();

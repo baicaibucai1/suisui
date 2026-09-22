@@ -1,5 +1,15 @@
 import { useStore } from '../lib/store';
 import { isProgramArtifact } from '../lib/visible';
+import { Menu } from './icons';
+
+/*
+ * 底部状态栏：**现在什么状况**，外加手机上打开文件列表的把手。
+ *
+ * 顶栏整条拿掉之后，这行就剩两件事：
+ *   ① 状态点 + 一句话（出错 / 通信中 / 未同步 / 就绪）—— 全屏宽度里最不打扰的一行；
+ *   ② 手机上的 ☰。它必须在**抽屉外面**：左栏在窄屏是浮上来的抽屉，
+ *      把手要是也放进抽屉里，抽屉一关就再也叫不出来了。
+ */
 
 export default function StatusBar() {
   const log = useStore((s) => s.log);
@@ -11,6 +21,8 @@ export default function StatusBar() {
   const token = useStore((s) => s.token);
   const lastSyncAt = useStore((s) => s.lastSyncAt);
   const current = useStore((s) => s.current);
+  const drawer = useStore((s) => s.drawer);
+  const setDrawer = useStore((s) => s.setDrawer);
 
   // 日志自带 ✔ 前缀，状态点已经表达了"成功"，这里去掉避免重复
   const tail = (log.slice(-1)[0] ?? '').replace(/^✔\s*/, '');
@@ -34,7 +46,18 @@ export default function StatusBar() {
   const message = error ? `错误：${error}` : busy ? '正在与远端通信…' : dirty ? '有未同步的改动' : tail;
 
   return (
-    <footer className="status-bar flex h-[32px] shrink-0 items-center gap-3 border-t border-line bg-surface px-4 text-[11.5px] max-md:gap-2 max-md:px-3">
+    <footer className="status-bar flex h-[32px] shrink-0 items-center gap-3 border-t border-line bg-surface px-4 text-[11.5px] max-md:h-11 max-md:gap-2 max-md:px-2">
+      {/* 只有手机需要这颗把手；桌面的左栏常驻在那里，用不着叫它出来 */}
+      <button
+        data-drawer-toggle
+        onClick={() => setDrawer(!drawer)}
+        aria-label="文件列表"
+        aria-expanded={drawer}
+        className="hidden h-9 w-9 shrink-0 place-items-center rounded-[9px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink active:bg-surface-3 max-md:grid"
+      >
+        <Menu size={17} />
+      </button>
+
       <span
         className={`flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[2px] font-medium ${pill}`}
       >

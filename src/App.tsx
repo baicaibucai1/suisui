@@ -1,13 +1,14 @@
 import { Suspense, lazy, useEffect } from 'react';
-import TopBar from './components/TopBar';
 import FileTree from './components/FileTree';
 import ChangeList from './components/ChangeList';
 import SideDock from './components/SideDock';
 import RightPane from './components/RightPane';
+import DeleteBanner from './components/DeleteBanner';
 import { EditorLoading, EmptyState } from './components/EmptyState';
 import StatusBar from './components/StatusBar';
 import { useStore } from './lib/store';
 import { isBinaryPath } from './lib/binary';
+import { PanelRight } from './components/icons';
 
 /*
  * 编辑器**按需加载**。它带着 Milkdown / Crepe / KaTeX，压缩后 1.4MB ——
@@ -31,6 +32,7 @@ export default function App() {
   const current = useStore((s) => s.current);
   const settings = useStore((s) => s.settings);
   const rightOpen = useStore((s) => s.rightOpen);
+  const setRightOpen = useStore((s) => s.setRightOpen);
 
   useEffect(() => {
     if (token) void refreshPlan();
@@ -50,7 +52,6 @@ export default function App() {
 
   return (
     <div className="desk flex h-full flex-col">
-      <TopBar />
       <div className="relative flex min-h-0 flex-1">
         {/*
           手机上侧栏是浮层，得有一层能点的东西把它收回去。
@@ -104,15 +105,35 @@ export default function App() {
           手机上整条不渲染（组件内部用同一条媒体查询自己摘自己，
           关系面板那会儿回正文底部）；桌面可用顶栏的按钮收起。
         */}
-        {rightOpen && (
+        {rightOpen ? (
           <aside
             data-rightpane
             className="hidden w-[250px] shrink-0 flex-col border-l border-line bg-paper-2/30 md:flex"
           >
             <RightPane />
           </aside>
+        ) : (
+          /*
+            收起之后原地留一条 12px 的窄轨：它是把右栏叫回来的唯一入口 ——
+            开关长在右栏自己头上，栏没了开关也跟着没了，得有个人一直站在外面。
+            桌面才有（手机上右栏本来就不出现，给它留轨是白占宽度）。
+          */
+          <button
+            data-right-toggle
+            onClick={() => setRightOpen(true)}
+            aria-label="展开右栏"
+            title="展开右栏（大纲 / 关系）"
+            className="hidden w-3 shrink-0 items-center justify-center border-l border-line bg-paper-2/30 transition-colors hover:bg-surface-2 md:flex"
+          >
+            <PanelRight size={11} className="text-ink-3" />
+          </button>
         )}
       </div>
+      {/*
+        删除确认横跨整屏、压在状态栏上面：它不能被收进左栏 ——
+        手机上左栏是抽屉，关上就再也点不到「确认」了。
+      */}
+      <DeleteBanner />
       <StatusBar />
       {settings && (
         <Suspense fallback={null}>

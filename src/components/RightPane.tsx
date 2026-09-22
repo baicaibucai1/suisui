@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { useMedia, WIDE } from '../lib/media';
 import { outlineOf } from '../lib/links';
 import BacklinkPane from './BacklinkPane';
-import { ListBullet } from './icons';
+import { ListBullet, PanelRight } from './icons';
 
 /*
  * 右侧边栏 —— 布局对齐 Obsidian 的第三条柱子：
@@ -38,6 +38,7 @@ export default function RightPane() {
   const current = useStore((s) => s.current);
   const files = useStore((s) => s.files);
   const setPendingHeading = useStore((s) => s.setPendingHeading);
+  const setRightOpen = useStore((s) => s.setRightOpen);
 
   const text = current ? (files[current] ?? '') : '';
   const isMd = current ? current.toLowerCase().endsWith('.md') : false;
@@ -45,15 +46,37 @@ export default function RightPane() {
 
   if (!wide) return null;
 
+  /*
+   * 收起按钮：右栏自己收自己（跟 Obsidian 一样，开关长在侧栏头上，不在顶栏）。
+   * 收起之后这条栏整个没了，原处会留一条 12px 的窄轨（在 App 里）——
+   * 同一时刻 `[data-right-toggle]` 永远只有一个，点两下就能来回切。
+   */
+  const collapse = (
+    <div className="flex h-8 shrink-0 items-center justify-end border-b border-line px-2">
+      <button
+        data-right-toggle
+        onClick={() => setRightOpen(false)}
+        aria-label="收起右栏"
+        title="收起右栏（大纲 / 关系）"
+        className="grid h-7 w-7 place-items-center rounded-[8px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <PanelRight size={14} />
+      </button>
+    </div>
+  );
+
   // 没开任何一篇：右栏照常在（布局不跳），给一句说明为什么是空的
   if (!current) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
-        <PaneSection label="本页">
-          <p className="px-1 py-1.5 text-[11.5px] leading-relaxed text-ink-3">
-            打开一篇笔记，这里会列出它的小标题和它跟别的篇的关系。
-          </p>
-        </PaneSection>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {collapse}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <PaneSection label="本页">
+            <p className="px-1 py-1.5 text-[11.5px] leading-relaxed text-ink-3">
+              打开一篇笔记，这里会列出它的小标题和它跟别的篇的关系。
+            </p>
+          </PaneSection>
+        </div>
       </div>
     );
   }
@@ -61,7 +84,12 @@ export default function RightPane() {
   const jump = (heading: string) => setPendingHeading(heading);
 
   return (
-    <div data-rightpane-body className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {collapse}
+      <div
+        data-rightpane-body
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3"
+      >
       {/*
         大纲。缩进 = (level-1) × 10px，和左栏目录树一个节奏；
         一二级标题是"这一页的骨架"，给足字重，三往下自然退后。
@@ -105,10 +133,11 @@ export default function RightPane() {
         )}
       </PaneSection>
 
-      {/* 右栏底部收个尾：大纲很长时上面滚，这行字提醒下面还有一节 */}
-      <div className="mt-auto flex items-center gap-1.5 pl-1 pt-2 text-[10.5px] text-ink-3">
-        <ListBullet size={11} />
-        大纲点一下就能跳过去
+        {/* 右栏底部收个尾：大纲很长时上面滚，这行字提醒下面还有一节 */}
+        <div className="mt-auto flex items-center gap-1.5 pl-1 pt-2 text-[10.5px] text-ink-3">
+          <ListBullet size={11} />
+          大纲点一下就能跳过去
+        </div>
       </div>
     </div>
   );

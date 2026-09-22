@@ -51,7 +51,7 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message.slice(0, 200))
 step('打开构建产物');
 await page.goto(URL, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(2000);
-ok('页面渲染出来了', (await page.locator('header').count()) > 0);
+ok('页面渲染出来了', (await page.locator('[data-dock]').count()) > 0);
 
 step('Service Worker 注册');
 {
@@ -115,7 +115,7 @@ step('断网：仍然打得开');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
 
-  ok('断网后页面还是渲染出来了', (await page.locator('header').count()) > 0);
+  ok('断网后页面还是渲染出来了', (await page.locator('[data-dock]').count()) > 0);
   const text = await page.evaluate(() => document.body.innerText);
   ok('离线时能看到本地那篇笔记', text.includes('离线也要能看'), text.slice(0, 80).replace(/\n/g, ' / '));
 
