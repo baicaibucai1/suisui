@@ -93,16 +93,20 @@ await page.waitForTimeout(900);
 ok('刷新后目录还在', (await dirs()).includes('读书/2026'), JSON.stringify(await dirs()));
 
 step('往这个文件夹里写笔记');
+/*
+ * 自建目录不再出现在「去处」候选里 —— 改成点它一下选中，
+ * 加号就落在它下面（这也是唯一能把笔记放进自建目录的路子）。
+ */
+await page.click('[data-dir="读书/2026"]');
+await page.waitForTimeout(250);
+ok(
+  '点目录行即选中',
+  (await page.locator('[data-dir="读书/2026"][data-dir-selected="1"]').count()) === 1,
+);
+const target = (((await page.textContent('[data-new-note-target]')) ?? '') + '').replace(/\s+/g, ' ').trim();
+ok('底部提示条指向这个目录', target.includes('读书/2026'), target);
 await page.click('[data-new-note]');
-await page.waitForSelector('[data-note-title]');
-const hasDirOpt = await page.locator('[data-note-dir="读书/2026"]').count();
-ok('自建目录出现在「去处」里', hasDirOpt === 1);
-await page.fill('[data-note-title]', '读了一半');
-await page.click('[data-note-dir="读书/2026"]');
-const preview = await page.textContent('[data-note-preview]');
-ok('预览指向这个目录', (preview ?? '').startsWith('读书/2026/'), preview ?? '');
-await page.click('[data-note-submit]');
-await page.waitForTimeout(700);
+await page.waitForTimeout(900);
 const shown2 = await page.$$eval('[data-file]', (els) => els.map((e) => e.getAttribute('data-file')));
 ok('笔记落在了这个目录', shown2.some((p) => p.startsWith('读书/2026/') && p.endsWith('.md')), shown2.join(' | '));
 

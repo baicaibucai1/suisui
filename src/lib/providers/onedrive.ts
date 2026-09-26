@@ -5,7 +5,7 @@
  * 走 PKCE 换 access token。注册应用得由账号主人在 Azure 门户做，所以这里
  * **只接 token**：有 token 就能跑，没 token 就在界面上标「待接入」。
  *
- * 路径用 Graph 的「冒号寻址」：`/me/drive/root:/碎碎/notes/a.md:/content`。
+ * 路径用 Graph 的「冒号寻址」：`/me/drive/root:/QuitWriteRead/notes/a.md:/content`。
  * 中文和空格都要编码（冒号是语法，不能编）。
  *
  * 指纹同样是现算的：DriveItem 给的 quickXorHash 不是 sha1，不能当基线（见 types.ts）。
@@ -18,7 +18,7 @@ import { RemoteError, type Remote, type RemoteChange, type RemoteEntry } from '.
 export type OneDriveConfig = {
   /** Graph 的 access token。留空 = 还没接上授权。 */
   token: string;
-  /** 库在 OneDrive 里的根目录，比如 `碎碎`。留空 = 整个 drive 的根。 */
+  /** 库在 OneDrive 里的根目录，比如 `QuitWriteRead`。留空 = 整个 drive 的根。 */
   basePath?: string;
 };
 

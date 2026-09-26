@@ -111,9 +111,9 @@ try {
   console.log('   同步前远端 HEAD:', before.sha.slice(0, 7), '-', before.commit.message);
 
   console.log('\n== 2. 新建 ' + TEST_PATH + ' 并输入内容');
-  await page.click('[data-new]');
-  await page.fill('input[placeholder*="thoughts"]', TEST_PATH);
-  await page.keyboard.press('Enter');
+  // 建笔记的 UI 入口已经改成「一键建 + 落点跟选中文件夹」，没法再手写任意路径。
+  // 这条测的是**推送往返**、不是创建交互 —— 直接用 store 建出目标路径更干净。
+  await page.evaluate((p) => window.__suisui.getState().createFile(p), TEST_PATH);
   await page.waitForTimeout(600);
   check((await page.locator(`[data-file="${TEST_PATH}"]`).count()) === 1, '文件出现在左侧');
   await page.click('.milkdown .ProseMirror, .milkdown');

@@ -1,64 +1,116 @@
 @import 'tailwindcss';
 
 /*
- * 设计令牌 —— 暖纸 + 墨 + 一枚黄铜。
+ * 设计令牌 —— 只有黑白灰，没有色相。
  *
- * 三件事在这层定死，组件里只用语义名，不许写裸 hex、不许写裸阴影：
+ * 四件事在这层定死，组件里只用语义名，不许写裸 hex、不许写裸阴影：
  *
- * 1. **明度分层替代边框分层。** 台面（paper）比纸面（surface）深一档，纸再比纸面浅一档；
- *    相邻两档的差值刚好够"看得出是两层"，不够就该换层，而不是去加一条 border。
- * 2. **阴影分五级**（xs / sm / md / lg / pop）。每一级只对应一种语义：
- *    xs 贴在纸面上的控件、sm 拿在手里的按钮、md 浮起的一张纸、
- *    lg 压在正文之上的临时卡片、pop 脱离文档流的弹层。跳级用就等于没分级。
- * 3. **衬线只给"名字"用**：碎碎、区块标题、空态主句。正文一律无衬线 ——
+ * 1. **配色只走明度，不走色相。** 所有值都是纯中性灰（R = G = B）：
+ *    台面（paper）比纸面（surface）深一档，纸面是纯白。相邻两档的差值
+ *    刚好够「看得出是两层」。需要再分一层的时候换明度，不要去调色。
+ * 2. **层次靠灰色阴影，不靠边框。** 阴影分五级（xs / sm / md / lg / pop），
+ *    每一级只对应一种语义：xs 贴在纸面上的控件、sm 拿在手里的按钮、
+ *    md 浮起的一张纸、lg 压在正文之上的临时卡片、pop 脱离文档流的弹层。
+ *    跳级用就等于没分级。
+ * 3. **状态也是灰的。** ok / warn / danger 之间靠明度阶梯 + 图标区分，
+ *    不再靠红黄绿 —— 所以那三个图标不是装饰，是必需。
+ * 4. **衬线只给「名字」用**：QuitWriteRead、区块标题、空态主句。正文一律无衬线 ——
  *    中文衬线在小字号下发虚，成段读起来累。这一条是刻意的，不是漏了。
  *
- * 稿纸那抹黄铜（craft）不是装饰色：它是「这张纸是你自己排的」的记号，
- * 出现在稿纸文件图标、稿纸徽标上，和 md 那套冷钢蓝形成对位。
+ * accent 在这套里就是**纯黑**。代价是链接与正文不再靠颜色分家，得靠下划线；
+ * 双链与 #标签 同理，改用线型区分（双链实线、标签点线，见文件后半段）。
  */
 @theme {
-  --color-paper: #f4f1ec;
-  --color-paper-2: #ece7e0;
-  --color-surface: #fffefd;
-  --color-surface-2: #f3f0ea;
-  --color-surface-3: #e7e2da;
-  --color-line: #e8e3db;
-  --color-line-2: #d7d0c6;
-  --color-line-3: #c1b8ad;
+  /* 台面 → 纸面：三档明度。纸面是纯白，台面退一格浅灰，差值刚好分得出两层 */
+  --color-paper: #ebebeb;
+  --color-paper-2: #e0e0e0;
+  --color-surface: #ffffff;
+  --color-surface-2: #f4f4f4;
+  --color-surface-3: #e9e9e9;
 
-  --color-ink: #211e1b;
-  --color-ink-2: #6b645c;
-  --color-ink-3: #9c948a;
+  --color-line: #e5e5e5;
+  --color-line-2: #d0d0d0;
+  --color-line-3: #adadad;
 
-  --color-accent: #3c5b7a;
-  --color-accent-2: #2f4b66;
-  --color-accent-3: #22384c;
-  --color-accent-soft: #ecf1f6;
-  --color-accent-line: #cedbe9;
+  /* 墨：正文近黑、二级中灰、三级浅灰 */
+  --color-ink: #121212;
+  --color-ink-2: #575757;
+  --color-ink-3: #8b8b8b;
 
-  --color-craft: #8a6f45;
-  --color-craft-soft: #f7f1e6;
-  --color-craft-line: #e4d8c1;
+  /*
+   * 强调 = 纯黑。主按钮黑底白字、链接、焦点环都走这三个。
+   * ⚠️ 正文是 #121212，accent 是 #000000 —— 靠「更黑」而不是「有色」来强调，
+   * 所以链接必须自带下划线，否则跟正文分不开。
+   */
+  --color-accent: #000000;
+  --color-accent-2: #000000;
+  --color-accent-3: #000000;
+  --color-accent-soft: #ededed;
+  --color-accent-line: #bdbdbd;
 
-  --color-ok: #4a7a5c;
-  --color-ok-soft: #ebf2ed;
-  --color-ok-line: #d1e0d6;
+  /* 中灰记号色：标签那一套（视图按钮 / 标签条 / 文件夹图标）用它跟主色分开 */
+  --color-craft: #6d6d6d;
+  --color-craft-soft: #f2f2f2;
+  --color-craft-line: #c6c6c6;
 
-  --color-warn: #96682a;
-  --color-warn-soft: #fbf4e7;
-  --color-warn-line: #eaddc2;
+  /* 状态三色 → 三级明度：danger 最黑（最重）、ok 深灰、warn 中灰 */
+  --color-ok: #4a4a4a;
+  --color-ok-soft: #f2f2f2;
+  --color-ok-line: #d9d9d9;
 
-  --color-danger: #ac4a3e;
-  --color-danger-soft: #fbedeb;
-  --color-danger-line: #eed3ce;
+  /*
+   * ── 阅读区的纸色 ──
+   * 五档，每档都**自带一组三色**（纸 / 墨 / 链接）和一条线色：
+   * 少给一样，就有某一档会难看或看不见 —— 白纸上的墨色搬到夜间那块 #17181a 上
+   * 就是黑字黑底。界面其余部分（头顶那一排、左栏、设置）**不跟着变**：
+   * 那是软件的壳，书才是被摊开的那张纸。
+   */
+  --color-read-paper: #ffffff;
+  --color-read-paper-ink: #121212;
+  --color-read-paper-link: #000000;
+  --color-read-paper-line: #e5e5e5;
 
-  --shadow-xs: 0 1px 1px rgba(33, 30, 27, 0.05);
-  --shadow-sm: 0 1px 2px rgba(33, 30, 27, 0.06), 0 1px 1px rgba(33, 30, 27, 0.04);
-  --shadow-md: 0 2px 5px -1px rgba(33, 30, 27, 0.08), 0 1px 2px rgba(33, 30, 27, 0.05);
-  --shadow-lg: 0 10px 24px -12px rgba(33, 30, 27, 0.2), 0 2px 6px -2px rgba(33, 30, 27, 0.07);
-  --shadow-pop: 0 20px 44px -16px rgba(33, 30, 27, 0.26), 0 2px 8px -2px rgba(33, 30, 27, 0.1);
-  /* 一张摊在台面上的纸：近距离的一圈细影 + 远处一层大而淡的落影 */
-  --shadow-sheet: 0 1px 2px rgba(33, 30, 27, 0.05), 0 16px 40px -24px rgba(33, 30, 27, 0.28);
+  --color-read-sepia: #f3ece0;
+  --color-read-sepia-ink: #43392c;
+  --color-read-sepia-link: #8a5a2b;
+  --color-read-sepia-line: #dcd2bf;
+
+  --color-read-night: #17181a;
+  --color-read-night-ink: #c9ccd1;
+  --color-read-night-link: #8ab4d8;
+  --color-read-night-line: #33363a;
+
+  --color-read-green: #e6efe3;
+  --color-read-green-ink: #2f3b2c;
+  --color-read-green-link: #3f6b39;
+  --color-read-green-line: #c9d8c4;
+
+  --color-read-cyan: #e3ecef;
+  --color-read-cyan-ink: #22333a;
+  --color-read-cyan-link: #2a6d84;
+  --color-read-cyan-line: #c5d7de;
+
+  --color-warn: #6b6b6b;
+  --color-warn-soft: #f4f4f4;
+  --color-warn-line: #dcdcdc;
+
+  --color-danger: #000000;
+  --color-danger-soft: #ececec;
+  --color-danger-line: #c8c8c8;
+
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.07), 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px -1px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 28px -12px rgba(0, 0, 0, 0.24), 0 3px 8px -3px rgba(0, 0, 0, 0.1);
+  --shadow-pop: 0 22px 48px -16px rgba(0, 0, 0, 0.32), 0 3px 10px -3px rgba(0, 0, 0, 0.12);
+  /*
+   * 一张摊在台面上的纸。近处一圈实、远处一层散 —— 少了近处那圈，
+   * 纸会像「贴」在台面上而不是「放」着。深浅两半一起才立得住。
+   */
+  --shadow-sheet:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 8px -1px rgba(0, 0, 0, 0.05),
+    0 18px 44px -26px rgba(0, 0, 0, 0.36);
 
   --radius-panel: 10px;
   --radius-card: 14px;
@@ -68,24 +120,32 @@
     sans-serif;
   --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'SFMono-Regular', 'Courier New', monospace;
   --font-serif: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif;
+
+  /*
+   * ── 阅读区的字体 ──
+   * 四档，**全是系统字体栈**：打包一个中文字体要十几 MB（思源黑体完整包 ~16MB，
+   * 就算只留常用 3500 字也 3MB 起），而阅读器按需加载那一层好不容易才把首屏压干净。
+   * 代价是"这台机器上没装这个字体"时会退到候选里的下一个 —— 所以每档都写
+   * **一整串候选**，最后一个是通用族（serif / sans-serif / monospace）兜底。
+   */
+  --font-read-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Microsoft YaHei UI',
+    'Microsoft YaHei', sans-serif;
+  --font-read-serif: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun',
+    Georgia, serif;
+  --font-read-kai: 'Kaiti SC', STKaiti, KaiTi, '楷体', 'AR PL UKai CN', 'BiauKai', serif;
+  --font-read-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'SFMono-Regular', 'Courier New',
+    monospace;
 }
 
 /*
- * 台面：一层极淡的暖色渐变打底，上面压一层 3% 的纸纹噪点。
- * 噪点用 data-uri 里的 feTurbulence 现画，不引外部图片、不联网络。
- * 只有台面有纹；纸面（surface）保持干净，两者一对比，"纸摊在桌上"才成立。
+ * 只剩两处渐变，都跟「牌子」有关 —— 纯色块会显得像占位符。
+ * 台面（.desk）刻意**没有**背景图：它是一块纯色，层次全部交给 .sheet 的阴影。
+ * 原来那层纸纹噪点（feTurbulence）去掉了 —— 这套配色要的是「纯色」。
  */
 :root {
-  --grad-desk: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(33, 30, 27, 0.035) 100%);
-  --grad-brand: linear-gradient(160deg, #3c5b7a 0%, #2f4b66 55%, #22384c 100%);
-  --grad-brand-tile: linear-gradient(158deg, #3a3733 0%, #211e1b 72%);
+  --grad-brand: linear-gradient(160deg, #333333 0%, #141414 55%, #000000 100%);
+  --grad-brand-tile: linear-gradient(158deg, #2e2e2e 0%, #0d0d0d 72%);
   --grad-primary: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(0, 0, 0, 0.06) 100%);
-  /*
-   * ⚠️ 噪点的强度必须写在 rect 的 **opacity** 上，不是 fill-opacity ——
-   * feTurbulence 根本不读源图形，fill-opacity 对它完全无效，
-   * 写在那儿等于全强度噪点，整页会糊成沙纸（真实踩过）。
-   */
-  --texture-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
 }
 
 html,
@@ -107,14 +167,14 @@ body {
 }
 
 ::selection {
-  background: #d5e2f0;
+  background: #d4d4d4;
 }
 
 /*
  * 键盘可达性：所有可聚焦控件给一圈统一的焦点环。
- * 用 :where() 把特异性压到 0 —— 组件里那些自己写 focus 样式的（比如 rich-scope、
- * ProseMirror）照常能盖住它，不用为了压它去写 !important。
- * 正文编辑区（.rich-scope）刻意排除：编辑时一整圈蓝框会晃眼。
+ * 用 :where() 把特异性压到 0 —— 组件里那些自己写 focus 样式的（比如 ProseMirror）
+ * 照常能盖住它，不用为了压它去写 !important。
+ * 正文编辑区刻意排除：编辑时一整圈蓝框会晃眼。
  */
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid var(--color-accent);
@@ -137,37 +197,16 @@ body {
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #c6bdb1;
+  background: #b8b8b8;
   background-clip: content-box;
 }
 
 /* ---------- 几个反复用到的"材质" ---------- */
 
 @layer components {
-  /* 台面：应用最底层的桌面，带纸纹与极淡的顶光 */
+  /* 台面：一层纯灰。纹理和顶光都去掉了 —— 纸的立体感交给 .sheet 的阴影 */
   .desk {
     background-color: var(--color-paper);
-    background-image: var(--texture-grain), var(--grad-desk);
-    background-size: 160px 160px, 100% 100%;
-    background-repeat: repeat, no-repeat;
-  }
-
-  /*
-   * 设置面板：从左边缘推出来的一张纸。
-   * 它的入口（齿轮）在左下角 dock 上，所以面板跟着左边缘走 —— 从右边飞来的是"别的地方"。
-   */
-  .sheet-in {
-    animation: sheet-in 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  }
-  @keyframes sheet-in {
-    from {
-      transform: translateX(-16px);
-      opacity: 0.3;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
   }
 
   /* 纸面：真正写字的那张纸。四周一圈 hairline + 一层摊开的落影 */
@@ -183,7 +222,7 @@ body {
     box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.16);
   }
   .btn-primary:hover {
-    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    box-shadow: var(--shadow-md), 0 0 0 3px rgba(0, 0, 0, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   }
   .btn-primary:active {
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
@@ -246,13 +285,20 @@ body {
   --crepe-color-secondary: var(--color-accent-soft);
   --crepe-color-on-secondary: var(--color-accent-2);
   --crepe-color-inverse: var(--color-ink);
-  --crepe-color-on-inverse: #fffefd;
+  --crepe-color-on-inverse: #ffffff;
   --crepe-color-inline-code: var(--color-danger);
   --crepe-color-error: var(--color-danger);
   --crepe-color-hover: var(--color-surface-2);
   --crepe-color-selected: var(--color-surface-3);
   --crepe-color-inline-area: var(--color-surface-3);
-  --crepe-base-font-size: 15.5px;
+  /*
+   * 正文字号。走变量而不是写死：状态栏那对 A− / A+ 调的就是它
+   * （store 的 editorFont → App 根节点内联注入 --editor-font）。
+   * 标题 / 列表 / 引用全是 em，正文一变全套跟着等比缩。
+   * var() 的兜底值就是原来的 15.5px —— 变量不在（比如局部预览）时退回原样。
+   */
+  --crepe-base-font-size: var(--editor-font, 15.5px);
+  font-size: var(--editor-font, 15.5px);
   --crepe-font-title: var(--font-sans);
   --crepe-font-default: var(--font-sans);
   --crepe-font-code: var(--font-mono);
@@ -267,6 +313,12 @@ body {
   padding: 0;
   line-height: 1.85;
   caret-color: var(--color-accent);
+  /*
+   * ⚠️ 这行不能省：Crepe 的主题在中间那层 .milkdown 上把字号写死成 16px
+   * （不走 --crepe-base-font-size），只靠 wrap 上那个 font-size 继承会被它截住 ——
+   * 状态栏 A± 怎么按正文都纹丝不动。在这里直接压上变量，标题那些 em 才有得缩。
+   */
+  font-size: var(--editor-font, 15.5px);
 }
 
 .milkdown-wrap .milkdown .ProseMirror:focus,
@@ -280,7 +332,7 @@ body {
 
 .milkdown-wrap .milkdown .ProseMirror h1,
 .milkdown-wrap .milkdown .ProseMirror h2 {
-  /* 标题用衬线：一篇东西的"名字"该跟正文分得开，这也是稿纸那套「书卷」预设在做的事 */
+  /* 标题用衬线：一篇东西的"名字"该跟正文分得开 */
   font-family: var(--font-serif);
   font-weight: 600;
   letter-spacing: 0.005em;
@@ -353,6 +405,9 @@ body {
 
 .milkdown-wrap .milkdown .ProseMirror a {
   color: var(--color-accent);
+  /* 颜色会被上下文化掉，链接唯一的分辨记号就是下划线 */
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
   text-decoration-color: var(--color-line-2);
   text-underline-offset: 3px;
 }
@@ -421,7 +476,7 @@ body {
   }
   15%,
   60% {
-    background: var(--color-accent-soft);
+    background: var(--color-line);
   }
 }
 
@@ -668,166 +723,6 @@ body {
   border-bottom: 1px dashed var(--color-line-2);
 }
 
-/* ---------- 稿纸（.rich）的默认排版 ---------- */
-
-/*
- * ⚠️ 整块必须在 @layer base 里，这不是洁癖。
- *
- * 用户的样式是 `@scope (.rich-scope) { h1 { … } }`。按 CSS Cascade 6，
- * **@scope 不给里面的选择器加特异性**，用户的 `h1` 就是 (0,0,1)；
- * 而这里若裸写 `.rich-scope h1` 就是 (0,1,1) —— 用户除非写 !important，
- * 否则永远改不动标题颜色，「这篇的 CSS」就成了摆设。
- *
- * 放进图层后，**未分层的样式一律压过分层的**，用户怎么写都赢。
- * 换句话说：想给稿纸加默认样式，加在这里；想让它可被覆盖，别搬出这个图层。
- */
-@layer base {
-  .rich-scope {
-    color: var(--color-ink);
-    font-size: 15.5px;
-    line-height: 1.85;
-    caret-color: var(--color-accent);
-    overflow-wrap: break-word;
-    text-wrap: pretty;
-  }
-
-  .rich-scope:focus,
-  .rich-scope:focus-visible {
-    outline: none;
-  }
-
-  .rich-scope > * + * {
-    margin-top: 0.9em;
-  }
-
-  .rich-scope h1,
-  .rich-scope h2 {
-    /* 同 md 编辑器：标题走衬线。用户在「这篇的 CSS」里照样能改掉它 */
-    font-family: var(--font-serif);
-    font-weight: 600;
-    letter-spacing: 0.005em;
-    line-height: 1.32;
-  }
-
-  .rich-scope h3,
-  .rich-scope h4 {
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    line-height: 1.35;
-  }
-
-  .rich-scope h1 {
-    font-size: 1.7em;
-    margin-top: 1.6em;
-  }
-
-  .rich-scope h2 {
-    font-size: 1.28em;
-    margin-top: 1.5em;
-    padding-bottom: 0.3em;
-    border-bottom: 1px solid var(--color-line);
-  }
-
-  .rich-scope h3 {
-    font-size: 1.06em;
-    margin-top: 1.3em;
-  }
-
-  .rich-scope ul,
-  .rich-scope ol {
-    padding-left: 1.6em;
-  }
-
-  .rich-scope ul {
-    list-style: disc;
-  }
-
-  .rich-scope ol {
-    list-style: decimal;
-  }
-
-  .rich-scope li + li {
-    margin-top: 0.2em;
-  }
-
-  .rich-scope blockquote {
-    border-left: 2px solid var(--color-line-2);
-    padding-left: 1.1em;
-    color: var(--color-ink-2);
-  }
-
-  .rich-scope code {
-    font-family: var(--font-mono);
-    font-size: 0.87em;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-line);
-    border-radius: 4px;
-    padding: 0.1em 0.35em;
-  }
-
-  .rich-scope pre {
-    font-family: var(--font-mono);
-    font-size: 0.87em;
-    line-height: 1.7;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-line);
-    border-radius: var(--radius-panel);
-    padding: 0.85em 1em;
-    overflow-x: auto;
-    white-space: pre-wrap;
-  }
-
-  .rich-scope pre code {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 1em;
-  }
-
-  .rich-scope a {
-    color: var(--color-accent);
-    text-decoration-color: var(--color-line-2);
-    text-underline-offset: 3px;
-  }
-
-  .rich-scope hr {
-    border: none;
-    border-top: 1px solid var(--color-line);
-    margin: 1.6em 0;
-  }
-
-  .rich-scope img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-  }
-
-  .rich-scope table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.94em;
-  }
-
-  .rich-scope th,
-  .rich-scope td {
-    border: 1px solid var(--color-line);
-    padding: 0.45em 0.7em;
-    text-align: left;
-  }
-
-  .rich-scope th {
-    background: var(--color-surface-2);
-    font-weight: 600;
-  }
-
-  /* contenteditable 里空段落靠 <br> 撑高，别让它塌成 0 */
-  .rich-scope p:empty::before,
-  .rich-scope p > br:only-child {
-    content: '';
-    display: inline-block;
-  }
-}
-
 /* ============================ 移动端（< 48rem） ============================
  *
  * 这里只放**会改变定位 / 滚动行为**的规则；间距字号这类微调就地写在组件的
@@ -872,7 +767,7 @@ body {
     width: min(80vw, 292px);
     transform: translateX(-100%);
     transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
-    box-shadow: 0 10px 34px rgba(34, 31, 28, 0.2);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
   }
 
   [data-drawer][data-open='1'] {
@@ -880,8 +775,7 @@ body {
   }
 
   /* --- 工具栏：换行会把正文整块挤下去，改成横滚 --- */
-  [data-md-toolbar],
-  [data-rich-toolbar] {
+  [data-md-toolbar] {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
@@ -892,14 +786,12 @@ body {
   }
 
   /* 手机上不显示横滚条（会盖住按钮下沿） */
-  [data-md-toolbar]::-webkit-scrollbar,
-  [data-rich-toolbar]::-webkit-scrollbar {
+  [data-md-toolbar]::-webkit-scrollbar {
     display: none;
   }
 
   /* --- 触摸目标：28px 是鼠标尺寸，手指按不准 --- */
   [data-md-toolbar] button,
-  [data-rich-toolbar] button,
   [data-drawer-toggle],
   [data-refresh],
   [data-sync],
@@ -918,7 +810,6 @@ body {
   }
 
   /* --- 弹层：桌面上是居中的小浮层，手机上居中就有一半在屏幕外 --- */
-  [data-rich-pop],
   [data-md-link-pop] {
     left: 12px;
     right: 12px;
@@ -935,7 +826,6 @@ body {
   }
 
   /* 弹层里的链接输入框原本固定 16rem 宽，贴边后要能自己缩 */
-  [data-rich-link-input],
   [data-md-link-input] {
     flex: 1;
     width: auto;
@@ -961,6 +851,224 @@ body {
     height: auto;
     min-height: 30px;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/*
+ * ── 阅读器的正文排版 ──
+ *
+ * epub 自带的样式**一律不用**（理由写在 BookPane.tsx 头上：写死字号和颜色的话，
+ * 字号调节和夜间模式就都失效了）。所以这里要把"一本书该长什么样"自己补齐：
+ * 段落缩进、标题层级、引用、图片、表格。
+ *
+ * ⚠️ 颜色走**读区容器上的 data-book-theme / data-book-font** 而不是全局 ——
+ * 夜间模式只该黑这一块正文，顶栏和左栏还是亮的（那是应用自己的界面，不是书）。
+ *
+ * 写法上刻意让**每档只做一次变量赋值**，下面统一由 `--book-*` 消费。
+ * 早先是每档单独写一套选择器（纸色、字色、链接、边框，五档要复制五遍），
+ * 加一档就得复制一整块、漏抄一条就是"这档纸的表格线看不见"。现在加一档加四行。
+ */
+[data-book-theme='paper'] {
+  --book-bg: var(--color-read-paper);
+  --book-ink: var(--color-read-paper-ink);
+  --book-link: var(--color-read-paper-link);
+  --book-line: var(--color-read-paper-line);
+}
+[data-book-theme='sepia'] {
+  --book-bg: var(--color-read-sepia);
+  --book-ink: var(--color-read-sepia-ink);
+  --book-link: var(--color-read-sepia-link);
+  --book-line: var(--color-read-sepia-line);
+}
+[data-book-theme='night'] {
+  --book-bg: var(--color-read-night);
+  --book-ink: var(--color-read-night-ink);
+  --book-link: var(--color-read-night-link);
+  --book-line: var(--color-read-night-line);
+}
+[data-book-theme='green'] {
+  --book-bg: var(--color-read-green);
+  --book-ink: var(--color-read-green-ink);
+  --book-link: var(--color-read-green-link);
+  --book-line: var(--color-read-green-line);
+}
+[data-book-theme='cyan'] {
+  --book-bg: var(--color-read-cyan);
+  --book-ink: var(--color-read-cyan-ink);
+  --book-link: var(--color-read-cyan-link);
+  --book-line: var(--color-read-cyan-line);
+}
+
+[data-book-font='sans'] {
+  --book-font: var(--font-read-sans);
+}
+[data-book-font='serif'] {
+  --book-font: var(--font-read-serif);
+}
+[data-book-font='kai'] {
+  --book-font: var(--font-read-kai);
+}
+[data-book-font='mono'] {
+  --book-font: var(--font-read-mono);
+}
+
+/* 纸色铺在滚动容器上（它是那张被摊开的纸），墨色由里面的 .book-body 取走 */
+[data-book-scroll] {
+  background-color: var(--book-bg, var(--color-read-paper));
+}
+
+/*
+ * `.book-body` 同时被两处用：阅读器正文、以及设置里那块「预览」。
+ * 两处各自挂 `data-book-theme` / `data-book-font`，所以它们看到的是同一套变量 ——
+ * 预览里调出来的样子就是读的时候的样子，不存在"预览准、正文不认"的情况。
+ */
+.book-body {
+  color: var(--book-ink, var(--color-ink));
+  font-family: var(--book-font, var(--font-read-sans));
+  word-wrap: break-word;
+}
+
+.book-body p {
+  margin: 0 0 0.85em;
+  /* 中文书段落首行缩进两字 —— 不缩进的话密密麻麻分不清段 */
+  text-indent: 2em;
+}
+
+/* 紧接着标题的第一段不缩进：那是段首，缩进反而像错行 */
+.book-body h1 + p,
+.book-body h2 + p,
+.book-body h3 + p,
+.book-body blockquote + p,
+.book-body li > p:first-child {
+  text-indent: 0;
+}
+
+.book-body h1,
+.book-body h2,
+.book-body h3,
+.book-body h4 {
+  margin: 1.6em 0 0.7em;
+  font-weight: 600;
+  line-height: 1.4;
+  text-indent: 0;
+}
+
+.book-body h1 { font-size: 1.5em; }
+.book-body h2 { font-size: 1.28em; }
+.book-body h3 { font-size: 1.13em; }
+.book-body h4 { font-size: 1em; }
+
+/* 书里第一级标题常常就是章节名，上面不该再空一大块 */
+.book-body section > h1:first-child,
+.book-body section > h2:first-child {
+  margin-top: 0;
+}
+
+.book-body blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--book-line);
+  color: var(--book-ink);
+  opacity: 0.72;
+}
+
+.book-body ul,
+.book-body ol {
+  margin: 0.6em 0;
+  padding-left: 1.6em;
+}
+
+.book-body li {
+  margin: 0.25em 0;
+  text-indent: 0;
+}
+
+.book-body img,
+.book-body svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em auto;
+}
+
+.book-body table {
+  width: 100%;
+  margin: 1em 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.book-body td,
+.book-body th {
+  border: 1px solid var(--book-line);
+  padding: 0.35em 0.55em;
+  text-indent: 0;
+}
+
+.book-body th {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.book-body hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--book-line);
+}
+
+.book-body a {
+  color: var(--book-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 书里的代码块：书不讲代码，但有些技术书有，别让它糊成一片 */
+.book-body pre,
+.book-body code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.88em;
+  text-indent: 0;
+}
+
+/*
+ * 批注底色。
+ *
+ * 为什么跟着 `.book-body` 的文字色走（`currentColor` 那一脉），而不是写死一个黄：
+ *   ① 这个界面是黑白的，一块马克笔黄进来会把整套配色撕开一个口子；
+ *   ② 五档纸色下同一个写死的颜色至少有一种会看不见 —— 白纸上刚好的灰，
+ *      夜间（背景 #17181a）就彻底沉底了。用当前正文色反过来当底色，
+ *      白纸上是浅灰、米纸上是浅褐、夜里的纸上是浅亮块，**每种都看得见**。
+ * `data-focus` 是右栏点了那一条时的临时强调（浓度加倍，两秒后退回）。
+ */
+.book-note-mark {
+  background-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+.book-note-mark[data-focus='1'] {
+  background-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+/* ---------- 设置：居中那张大卡 ---------- */
+
+/*
+ * 以前是**从左边缘推出的一张纸**，理由是"入口（齿轮）在左下角，面板跟着入口走"。
+ * 现在它是个正经的对话框：遮罩 + 居中卡片。改形状不是因为那条理由不成立，
+ * 而是**内容撑爆了容器** —— 阅读那一节要能横着铺开一行
+ * 「字体 / 字号 / 行距 / 纸色」，400px 的侧抽屉里它们只能叠成一摞，
+ * 那就谈不上「一次调齐」了。
+ *
+ * 动画刻意只有一个 ease-out 的「浮起」：从下方 8px 淡进来，**不缩放**。
+ * 缩放（scale 0.96 → 1）看着精致，但会带着整块文字一起放大，读标题时字在抖。
+ */
+.dialog-in {
+  animation: dialog-in 0.18s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes dialog-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 

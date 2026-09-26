@@ -1,4 +1,4 @@
-import { FileText } from './icons';
+import { Book, FileText } from './icons';
 import { EditorShell, SheetBody } from './EditorShell';
 
 /*
@@ -91,9 +91,39 @@ export function EmptyState() {
           摊开一张纸，先写一句
         </p>
         <p className="mt-2 text-[12.5px] leading-relaxed text-ink-3">
-          从文件列表里选一篇开始改，或点「创建笔记」写新的
+          从文件列表里选一篇开始改，或点左上角那颗 + 写新的
           <br />
           第一次用可以先按「同步」把仓库拉下来
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 阅读这一边的空态：手上没有书。
+ *
+ * 不能复用书写的那个空态 —— 那张图是一叠纸和一支笔，说的全是"写"。
+ * 人在阅读这边看到它只会想"我是不是点错了"。这边没有插图要画：
+ * 书架在左边，指过去就够了。也不说「左边」—— 手机上书架在抽屉里。
+ */
+export function BookEmptyState() {
+  return (
+    <div
+      data-book-empty
+      className="desk flex h-full min-h-0 flex-col items-center justify-center gap-5 px-6 text-center"
+    >
+      <span className="grid h-16 w-16 place-items-center rounded-[18px] border border-line bg-surface shadow-xs">
+        <Book size={26} className="text-ink-3" />
+      </span>
+      <div className="max-w-[22rem]">
+        <p className="font-serif text-[16px] font-semibold tracking-[0.06em] text-ink">
+          挑一本书，接着读
+        </p>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+          从书架上选一本，或把 epub 拖进书架
+          <br />
+          书存在本机，不进笔记库、不参与同步
         </p>
       </div>
     </div>

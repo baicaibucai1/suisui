@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>碎碎 · 手机预览</title>
+    <title>QuitWriteRead · 手机预览</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
     <style>
@@ -23,8 +23,8 @@
       body {
         display: flex;
         flex-direction: column;
-        background: #f5f3ef;
-        color: #221f1c;
+        background: #ebebeb;
+        color: #121212;
         font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'Microsoft YaHei',
           sans-serif;
         font-size: 13px;
@@ -40,8 +40,8 @@
         gap: 8px;
         flex-shrink: 0;
         padding: 9px 12px;
-        border-bottom: 1px solid #e7e2db;
-        background: #fffefd;
+        border-bottom: 1px solid #e5e5e5;
+        background: #ffffff;
       }
       .group {
         display: flex;
@@ -52,7 +52,7 @@
         width: 1px;
         height: 18px;
         margin: 0 2px;
-        background: #e7e2db;
+        background: #e5e5e5;
       }
       .chip,
       .act {
@@ -61,28 +61,28 @@
         gap: 5px;
         height: 28px;
         padding: 0 10px;
-        border: 1px solid #e7e2db;
+        border: 1px solid #e5e5e5;
         border-radius: 8px;
-        background: #fffefd;
-        color: #6e6760;
+        background: #ffffff;
+        color: #575757;
         font: inherit;
         font-size: 12px;
         cursor: pointer;
         white-space: nowrap;
-        box-shadow: 0 1px 1px rgba(33, 30, 27, 0.04);
+        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
         transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
       }
       .chip:hover,
       .act:hover {
-        border-color: #d7d0c6;
-        background: #f3f0ea;
-        color: #211e1b;
-        box-shadow: 0 1px 2px rgba(33, 30, 27, 0.08);
+        border-color: #d0d0d0;
+        background: #f4f4f4;
+        color: #121212;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
       }
       .chip[aria-pressed='true'] {
-        border-color: #3d5d7d;
-        background: #eaeff5;
-        color: #3d5d7d;
+        border-color: #111111;
+        background: #ededed;
+        color: #111111;
         font-weight: 600;
       }
       .act:disabled {
@@ -92,18 +92,18 @@
       .act.primary {
         border-color: transparent;
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(0, 0, 0, 0.06) 100%),
-          linear-gradient(160deg, #3c5b7a 0%, #2f4b66 55%, #22384c 100%);
-        box-shadow: 0 1px 2px rgba(33, 30, 27, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-        color: #fffefd;
+          linear-gradient(160deg, #333333 0%, #141414 55%, #000000 100%);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+        color: #ffffff;
         font-weight: 500;
       }
       .act.primary:hover {
-        color: #fffefd;
+        color: #ffffff;
         filter: brightness(1.06);
       }
       .slider {
         width: 92px;
-        accent-color: #3d5d7d;
+        accent-color: #111111;
       }
       .title {
         display: flex;
@@ -117,9 +117,9 @@
         width: 26px;
         height: 26px;
         border-radius: 8px;
-        background: linear-gradient(158deg, #3a3733 0%, #211e1b 72%);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(33, 30, 27, 0.2);
-        color: rgba(255, 254, 253, 0.95);
+        background: linear-gradient(158deg, #2e2e2e 0%, #0d0d0d 72%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(0, 0, 0, 0.2);
+        color: rgba(255, 255, 255, 0.95);
         font-style: normal;
         font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', Georgia, 'SimSun', serif;
         font-size: 13px;
@@ -134,7 +134,7 @@
       .title span {
         font-family: 'Cascadia Mono', Consolas, monospace;
         font-size: 10.5px;
-        color: #a39c94;
+        color: #8b8b8b;
       }
 
       /* --- 舞台 --- */
@@ -157,8 +157,8 @@
         transform-origin: top left;
         padding: 9px;
         border-radius: 36px;
-        background: #221f1c;
-        box-shadow: 0 16px 44px rgba(34, 31, 28, 0.26), 0 2px 6px rgba(34, 31, 28, 0.14);
+        background: #121212;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.26), 0 2px 6px rgba(0, 0, 0, 0.14);
       }
       #device.tablet {
         padding: 11px;
@@ -173,7 +173,7 @@
         display: block;
         border: 0;
         border-radius: 28px;
-        background: #fffefd;
+        background: #ffffff;
       }
       #device.tablet #screen {
         border-radius: 13px;
@@ -191,7 +191,7 @@
         height: 20px;
         transform: translateX(-50%);
         border-radius: 0 0 11px 11px;
-        background: #221f1c;
+        background: #121212;
         pointer-events: none;
       }
       #device.tablet #notch,
@@ -206,17 +206,17 @@
         align-items: center;
         gap: 10px;
         padding: 6px 12px;
-        border-top: 1px solid #e7e2db;
-        background: #fffefd;
+        border-top: 1px solid #e5e5e5;
+        background: #ffffff;
         font-size: 11.5px;
-        color: #a39c94;
+        color: #8b8b8b;
       }
       footer code {
         font-family: 'Cascadia Mono', Consolas, monospace;
-        color: #6e6760;
+        color: #575757;
       }
       .warn {
-        color: #96682a;
+        color: #6b6b6b;
       }
       .grow {
         flex: 1;
@@ -225,7 +225,7 @@
   </head>
   <body>
     <header>
-      <div class="title"><i>碎</i><b>碎碎</b><span>手机预览</span></div>
+      <div class="title"><i>Q</i><b>QuitWriteRead</b><span>手机预览</span></div>
       <div class="group" id="presets"></div>
       <div class="sep"></div>
       <div class="group">
@@ -249,7 +249,7 @@
       <div id="slot">
         <div id="device">
           <div id="notch"></div>
-          <iframe id="screen" title="碎碎（手机视口）"></iframe>
+          <iframe id="screen" title="QuitWriteRead（手机视口）"></iframe>
         </div>
       </div>
     </main>

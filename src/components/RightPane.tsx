@@ -4,7 +4,8 @@ import { useMedia, WIDE } from '../lib/media';
 import { outlineOf } from '../lib/links';
 import BacklinkPane from './BacklinkPane';
 import MissingPane from './MissingPane';
-import { ListBullet, PanelRight } from './icons';
+import BookAside from './BookAside';
+import { ListBullet } from './icons';
 
 /*
  * 右侧边栏 —— 布局对齐 Obsidian 的第三条柱子：
@@ -38,8 +39,9 @@ export default function RightPane() {
   const wide = useMedia(WIDE);
   const current = useStore((s) => s.current);
   const files = useStore((s) => s.files);
+  const side = useStore((s) => s.side);
+  const currentBook = useStore((s) => s.currentBook);
   const setPendingHeading = useStore((s) => s.setPendingHeading);
-  const setRightOpen = useStore((s) => s.setRightOpen);
 
   const text = current ? (files[current] ?? '') : '';
   const isMd = current ? current.toLowerCase().endsWith('.md') : false;
@@ -48,29 +50,23 @@ export default function RightPane() {
   if (!wide) return null;
 
   /*
-   * 收起按钮：右栏自己收自己（跟 Obsidian 一样，开关长在侧栏头上，不在顶栏）。
-   * 收起之后这条栏整个没了，原处会留一条 12px 的窄轨（在 App 里）——
-   * 同一时刻 `[data-right-toggle]` 永远只有一个，点两下就能来回切。
+   * 读着书的时候右栏换成那本书的**目录 + 批注**。
+   *
+   * 判定要带上 `side`：切去书写改笔记时 currentBook 还留着（回去时能接上读到哪），
+   * 那时候人要看的是**笔记**的大纲和关系 —— 把书的目录一直顶在那儿是抢地方。
    */
-  const collapse = (
-    <div className="flex h-8 shrink-0 items-center justify-end border-b border-line px-2">
-      <button
-        data-right-toggle
-        onClick={() => setRightOpen(false)}
-        aria-label="收起右栏"
-        title="收起右栏（大纲 / 关系）"
-        className="grid h-7 w-7 place-items-center rounded-[8px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
-      >
-        <PanelRight size={14} />
-      </button>
-    </div>
-  );
+  if (side === 'read' && currentBook) return <BookAside />;
+
+  /*
+   * ⚠️ 收起按钮**不在这一栏里** —— 它在顶栏（`TopBar` 的 `data-right-toggle`）。
+   * 原因写在 TopBar 的注释里：开关长在栏自己身上，栏一收按钮就跟着没了，
+   * 人只能靠猜把它叫回来。同一时刻 `[data-right-toggle]` 必须只有一个。
+   */
 
   // 没开任何一篇：右栏照常在（布局不跳），给一句说明为什么是空的
   if (!current) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        {collapse}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <PaneSection label="本页">
             <p className="px-1 py-1.5 text-[11.5px] leading-relaxed text-ink-3">
@@ -86,7 +82,6 @@ export default function RightPane() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {collapse}
       <div
         data-rightpane-body
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3"

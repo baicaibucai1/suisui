@@ -18,7 +18,7 @@ import { parsePropfind } from './davxml';
 import { RemoteError, type Remote, type RemoteChange, type RemoteEntry } from './types';
 
 export type DavConfig = {
-  /** 库根的完整 URL，比如 `https://dav.jianguoyun.com/dav/碎碎` */
+  /** 库根的完整 URL，比如 `https://dav.jianguoyun.com/dav/QuitWriteRead` */
   url: string;
   user: string;
   /** 坚果云的「应用密码」（不是登录密码，在账户安全选项里单独生成） */

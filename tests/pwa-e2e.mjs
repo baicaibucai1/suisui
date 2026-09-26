@@ -68,18 +68,17 @@ step('Service Worker 注册');
 
 step('让 SW 接管并缓存资源');
 await page.evaluate(() => {
-  // 造点本地内容，离线后要能看到它 —— 这条才是「离线可用」的实证
+  // 造点本地内容，离线后要能看到它 —— 这条才是「离线可用」的实证。
+  // ⚠️ 笔记的真身现在是仓库（浏览器里 = localStorage 那个暂存键），
+  // persist 那份只管 `current`（选中哪篇），不再管 files —— 仓库才是唯一真相。
+  localStorage.setItem(
+    'suisui.repo.memory.v1',
+    JSON.stringify({ 'thoughts/离线也要能看.md': '# 离线也要能看\n\n飞机上写的。\n' }),
+  );
   localStorage.setItem(
     'suisui.demo.v1',
     JSON.stringify({
-      state: {
-        token: '',
-        files: { 'thoughts/离线也要能看.md': '# 离线也要能看\n\n飞机上写的。\n' },
-        snapshot: {},
-        current: 'thoughts/离线也要能看.md',
-        lastSyncAt: null,
-        showAll: false,
-      },
+      state: { token: '', current: 'thoughts/离线也要能看.md', lastSyncAt: null, showAll: false },
       version: 0,
     }),
   );
@@ -147,15 +146,23 @@ step('产物里的移动端布局（Tailwind 产物顺序会变，得单独验�
     ok('工具栏在产物里也在（当前没选中 md 文件，跳过形状检查）', true);
   }
 
+  /*
+   * 同步那颗**搬回 dock 了**（挨着设置），所以这里不再断言"顶栏按钮文字藏住" ——
+   * dock 那三颗现在是**带字**的（纯图标方钮那次被人问"这个按钮哪里像设置"）。
+   * 改钉两件事：同步真在 dock 里，且字没被挤掉。
+   */
   const hideOk = await page.evaluate(() => {
-    const s = document.querySelector('[data-sync] span');
+    const sync = document.querySelector('[data-sync]');
+    const label = sync?.querySelector('span');
     const burger = document.querySelector('[data-drawer-toggle]');
     return {
-      syncTextHidden: s ? getComputedStyle(s).display === 'none' : true,
+      syncInDock: !!sync?.closest('[data-dock]'),
+      syncTextShown: label ? getComputedStyle(label).display !== 'none' : false,
       burgerShown: burger ? getComputedStyle(burger).display !== 'none' : false,
     };
   });
-  ok('产物里顶栏按钮文字仍然藏住', hideOk.syncTextHidden, JSON.stringify(hideOk));
+  ok('产物里同步在 dock 里（跟设置同一条）', hideOk.syncInDock, JSON.stringify(hideOk));
+  ok('产物里同步按钮带着文字', hideOk.syncTextShown, JSON.stringify(hideOk));
   ok('产物里汉堡按钮仍然显示', hideOk.burgerShown, JSON.stringify(hideOk));
 }
 

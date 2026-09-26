@@ -37,6 +37,27 @@ export const Chevron = (p: IconProps) => (
   </Svg>
 );
 
+export const Minus = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.6 8h8.8" />
+  </Svg>
+);
+
+export const Book = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.2 3.1h4a2 2 0 0 1 2 2v9.4a1.6 1.6 0 0 0-1.6-1.4H3.2V3.1Z" />
+    <path d="M12.8 3.1h-4a2 2 0 0 0-2 2v9.4a1.6 1.6 0 0 1 1.6-1.4h4.4V3.1Z" />
+  </Svg>
+);
+
+/** 摊开的书 —— 书架里标「正在读」那本 */
+export const BookOpen = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 4.2C6.5 3.1 4.6 2.6 2.6 2.6v9.6c2 0 3.9.5 5.4 1.6 1.5-1.1 3.4-1.6 5.4-1.6V2.6c-2 0-3.9.5-5.4 1.6Z" />
+    <path d="M8 4.2v9.6" />
+  </Svg>
+);
+
 export const FileText = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9.1 1.9H5.3a1.5 1.5 0 0 0-1.5 1.5v9.2a1.5 1.5 0 0 0 1.5 1.5h5.4a1.5 1.5 0 0 0 1.5-1.5V4.9L9.1 1.9Z" />
@@ -152,12 +173,44 @@ export const Menu = (p: IconProps) => (
   </Svg>
 );
 
-/** 设置：一枚齿环。顶栏右侧那颗 */
-export const Gear = (p: IconProps) => (
-  <Svg {...p}>
-    <circle cx="8" cy="8" r="2.3" />
-    <path d="M8 1.5v1.7M8 12.8v1.7M2.8 2.8l1.2 1.2M12 12l1.2 1.2M1.5 8h1.7M12.8 8h1.7M2.8 13.2l1.2-1.2M12 4l1.2-1.2" />
+/**
+ * 「更多」：三个点。**横向**排（⋯），不是纵向（⋮）——
+ * 工具条是横着排的一行，纵向三个点会像抓手/排序把手。
+ * 点是实心小圆（`fill`），不用空心圈：13px 里空心圈只剩一个灰环，认不出是点。
+ */
+export const MoreDots = (p: IconProps) => (
+  <Svg {...p} strokeWidth={0}>
+    <circle cx="3.6" cy="8" r="1.15" fill="currentColor" />
+    <circle cx="8" cy="8" r="1.15" fill="currentColor" />
+    <circle cx="12.4" cy="8" r="1.15" fill="currentColor" />
   </Svg>
+);
+
+/**
+ * 设置：一枚齿轮（齿环 + 中孔）。
+ *
+ * ⚠️ 它不吃上面那个 16 网格的 `Svg` 包装，自己开一格 24 网格：
+ * 齿轮的齿是一圈圆弧咬合，压到 16 格里齿会糊成一团太阳 ——
+ * 第一版就是这么画的（中心圆点 + 八根放射短线），被用户当成亮度/加载图标吐槽了。
+ * 24 格下描边 2，缩到 16px 显示时视觉粗细与别的 1.5 描边图标对齐。
+ * 用的是 lucide `settings` 的公开画法（ISC 许可）。
+ */
+export const Gear = ({ size = 16, className, strokeWidth = 2 }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
 );
 
 /** 新建文件夹：一枚文件夹 + 加号 */
@@ -270,99 +323,14 @@ export const Divider = (p: IconProps) => (
   </Svg>
 );
 
-/* ---------- 稿纸（富文本）工具栏 ---------- */
-
-export const Underline = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4.7 2.8v5.1a3.3 3.3 0 0 0 6.6 0V2.8" />
-    <path d="M3.4 13.5h9.2" />
-  </Svg>
-);
-
-export const AlignLeft = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2.4 3.9h11.2M2.4 8h7.2M2.4 12.1h9.6" />
-  </Svg>
-);
-
-export const AlignCenter = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2.4 3.9h11.2M4.4 8h7.2M3.2 12.1h9.6" />
-  </Svg>
-);
-
-export const AlignRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2.4 3.9h11.2M6.4 8h7.2M4 12.1h9.6" />
-  </Svg>
-);
-
-/**
- * 「文字颜色」。底下的粗横线是**色块**，会跟着当前选的颜色变 ——
- * 所以它不吃 Svg 的 currentColor，得单独接一个 swatch。
+/*
+ * 「高亮笔」。阅读器（BookPane）划词高亮用 —— 别当成富文本工具栏的遗留删掉。
  */
-export const TextColor = ({ swatch = 'currentColor', ...p }: IconProps & { swatch?: string }) => (
-  <Svg {...p}>
-    <path d="M3.6 10.9 7.2 3.2h1.6l3.6 7.7" />
-    <path d="M5.2 8.3h5.6" />
-    <path d="M3.1 13.5h9.8" stroke={swatch} strokeWidth={2.6} />
-  </Svg>
-);
-
-/** 「底色高亮」。和 TextColor 一样，底部色块吃 swatch。 */
 export const Highlighter = ({ swatch = 'currentColor', ...p }: IconProps & { swatch?: string }) => (
   <Svg {...p}>
-    <path d="M3.5 9.6 9.9 3.2a1.4 1.4 0 0 1 2 2l-6.4 6.4-2.9.7.9-2.7Z" />
-    <path d="M3.1 13.5h9.8" stroke={swatch} strokeWidth={2.6} />
-  </Svg>
-);
-
-/** 「字号」：一大一小两个 A */
-export const TextSize = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M1.5 12.3 4.2 5.5h1l2.7 6.8" />
-    <path d="M2.6 9.9h5.2" />
-    <path d="M9.2 12.3 11 8.1h.8l1.8 4.2" />
-    <path d="M9.8 10.8h3.2" />
-  </Svg>
-);
-
-/** 「卡片」：带标题条的圆角块 */
-export const Card = (p: IconProps) => (
-  <Svg {...p}>
-    <rect x="2.2" y="3.7" width="11.6" height="8.6" rx="1.9" />
-    <path d="M2.2 6.6h11.6" />
-  </Svg>
-);
-
-export const Indent = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2.6 3.4h10.8M6.8 8h6.6M2.6 12.6h10.8" />
-    <path d="M2.7 6.3 5.2 8l-2.5 1.7V6.3Z" />
-  </Svg>
-);
-
-export const Outdent = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2.6 3.4h10.8M6.8 8h6.6M2.6 12.6h10.8" />
-    <path d="M5.2 6.3 2.7 8l2.5 1.7V6.3Z" />
-  </Svg>
-);
-
-/** 「这篇的 CSS」：一对花括号 */
-export const Braces = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M6.4 2.6c-1.6 0-2 .9-2 2.2 0 1.6-.5 2.5-1.8 3.2 1.3.7 1.8 1.6 1.8 3.2 0 1.3.4 2.2 2 2.2" />
-    <path d="M9.6 2.6c1.6 0 2 .9 2 2.2 0 1.6.5 2.5 1.8 3.2-1.3.7-1.8 1.6-1.8 3.2 0 1.3-.4 2.2-2 2.2" />
-  </Svg>
-);
-
-/** 「稿纸」文件图标：稿纸那格一格的网格，和 md 的 FileText 一眼分得开 */
-export const Paper = (p: IconProps) => (
-  <Svg {...p}>
-    <rect x="2.5" y="2.5" width="11" height="11" rx="1.7" />
-    <path d="M2.5 6.2h11M2.5 9.8h11" />
-    <path d="M6.2 2.5v11M9.8 2.5v11" />
+    <path d="M9.5 2.6 13.4 6.5 7.3 12.6H3.4V8.7Z" />
+    <path d="M8.4 3.7 12.3 7.6" />
+    <path d="M3.4 14.2h9.2" strokeWidth={2.4} stroke={swatch} />
   </Svg>
 );
 
@@ -453,5 +421,30 @@ export const PanelRight = (p: IconProps) => (
     <rect x="2.2" y="3.1" width="11.6" height="9.8" rx="1.4" />
     <path d="M9.4 3.1v9.8" />
     <path d="M11 5.6h1.4M11 7.8h1.4" />
+  </Svg>
+);
+
+/** 改名（右键菜单）。一支斜放的笔 —— 和 Plus 那种"加东西"区分开 */
+export const Pencil = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10.4 2.6a1.5 1.5 0 0 1 2.1 2.1l-7 7-2.7.6.6-2.7 7-7Z" />
+    <path d="m9.3 3.7 2.1 2.1" />
+  </Svg>
+);
+
+/** 复制（复制路径 / 复制双链） */
+export const Copy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="5.6" y="5.6" width="8" height="8.2" rx="1.4" />
+    <path d="M10.6 3.4a1.4 1.4 0 0 0-1.4-1.2H3.8a1.4 1.4 0 0 0-1.4 1.4v5.5c0 .7.5 1.2 1.2 1.4" />
+  </Svg>
+);
+
+/** 属性（右键菜单最后那一项）。圆圈里一个 i */
+export const Info = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 7.2v4.1" />
+    <path d="M8 4.9h.01" />
   </Svg>
 );

@@ -63,7 +63,7 @@ const PROGRAM_DIR = new Set([
   'assets',
 ]);
 
-/** 根目录下的仓库说明文件（索引脚本的工作文件，不是"碎碎"本身） */
+/** 根目录下的仓库说明文件（索引脚本的工作文件，不是"QuitWriteRead"本身） */
 const ROOT_META = new Set(['readme.md', 'readme', 'license', 'changelog.md']);
 
 export function isProgramArtifact(path: string): boolean {

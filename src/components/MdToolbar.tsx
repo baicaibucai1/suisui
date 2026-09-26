@@ -171,7 +171,7 @@ export default function MdToolbar({ active, onRun, currentHref }: Props) {
             data-md-link-apply
             onClick={applyLink}
             disabled={!href.trim()}
-            className="btn-primary h-7 rounded-[8px] bg-accent px-3 text-[12px] font-medium text-white transition-[box-shadow,opacity] duration-150 hover:brightness-[1.06] disabled:opacity-40"
+            className="btn-primary h-7 rounded-[8px] bg-accent px-3 text-[12px] font-medium text-white transition-[box-shadow,opacity] duration-150 hover:opacity-90 disabled:opacity-40"
           >
             插入
           </button>

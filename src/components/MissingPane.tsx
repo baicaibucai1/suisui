@@ -99,7 +99,7 @@ export default function MissingPane() {
               data-missing-build
               disabled={sel.length === 0}
               onClick={() => build(sel)}
-              className="ml-auto rounded-[7px] border border-accent-line bg-accent-soft px-2 py-[3px] text-[11.5px] font-medium text-accent transition-opacity hover:brightness-[1.04] disabled:opacity-35 disabled:pointer-events-none"
+              className="ml-auto rounded-[7px] border border-accent-line bg-accent-soft px-2 py-[3px] text-[11.5px] font-medium text-accent transition-opacity hover:opacity-90 disabled:opacity-35 disabled:pointer-events-none"
             >
               {sel.length > 0 ? `建这 ${sel.length} 篇` : '建选中的'}
             </button>

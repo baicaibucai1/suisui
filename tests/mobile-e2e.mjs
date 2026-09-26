@@ -39,14 +39,13 @@ const browser = await chromium.launch({ channel: 'msedge', headless: true, args:
 
 const errors = [];
 
-/** 造点数据：一篇 md、一篇稿纸。直接喂 store，不绕 UI —— 这里验的是布局，不是创建流程。 */
+/** 造点数据：两篇 md。直接喂 store，不绕 UI —— 这里验的是布局，不是创建流程。 */
 const seed = (p) =>
   p.evaluate(() => {
     window.__suisui.setState({
       files: {
         'thoughts/2026-09-21-开张.md': '# 开张\n\n第一篇。\n',
         'notes/2026-09-21-随手.md': '# 随手\n\n记一笔。\n',
-        'notes/2026-09-21-稿纸.rich': '<style>\n:scope { background: #fdfbf6; }\n</style>\n<h1>稿纸</h1>\n<p>用 CSS 排版。</p>\n',
       },
       current: 'thoughts/2026-09-21-开张.md',
       changes: [],
@@ -153,15 +152,29 @@ step('md 工具栏：横滚而不是换行');
 
 step('顶栏 / 状态栏：手机上只留必要的');
 {
-  // 顶栏整条没了，仓库坐标也一并走（设置面板里还写着），手机上更没有
-  ok('顶栏整个拿掉了', (await page.locator('header').count()) === 0);
-  // 两个按钮的文字都要藏干净。漏一处不是「少藏一处」，而是文字在 36px 的方按钮里
-  // 被挤成竖排 —— 截图里抓到过这种，断言不覆盖就会一直漏下去。
-  for (const id of ['data-refresh', 'data-sync']) {
-    ok(`${id} 的文字藏干净了`, !(await page.locator(`[${id}] span`).isVisible()));
-  }
-  const syncBox = await page.locator('[data-sync]').boundingBox();
-  ok('同步按钮是方的（图标尺寸）', syncBox.width <= 44 && syncBox.height >= 36, JSON.stringify(syncBox));
+  /*
+   * 顶栏**回来了**（骨架重做那次），但手机上只留它该留的两段：
+   * 书写 / 阅读的切换 + 当前文件路径。收栏那两颗箭头是 `hidden md:flex`
+   * —— 手机上左栏是抽屉（归状态栏 ☰ 管）、右栏压根不渲染，
+   * 给出去就是两颗按了没反应的按钮。
+   */
+  ok('顶栏只有一条', (await page.locator('header').count()) === 1);
+  ok('手机上没有收栏的箭头', !(await page.locator('[data-left-toggle]').isVisible()));
+  ok('右栏开关在手机上也不出现', !(await page.locator('[data-right-toggle]').isVisible()));
+  /*
+   * 同步**不在状态栏了** —— 它搬回了左栏底上的 dock，挨着设置（用户要求）。
+   * dock 那三颗都带字（"刷新差异" / "同步" / "设置"）：纯图标方钮那次被人问过
+   * "这个按钮哪里像设置"，字是故意加回来的，所以这儿不再断言"文字藏干净"。
+   * 手机上 dock 跟着抽屉进来（抽屉宽 min(80vw,292px)，三颗带字放得下）。
+   */
+  ok('同步在 dock 里（不在状态栏）', (await page.locator('[data-dock] [data-sync]').count()) === 1);
+  ok('状态栏上没有同步按钮了', (await page.locator('footer.status-bar [data-sync]').count()) === 0);
+  const footSpans = await page.evaluate(() =>
+    [...document.querySelectorAll('footer.status-bar span')]
+      .filter((s) => s.offsetParent !== null)
+      .map((s) => s.textContent.trim()),
+  );
+  ok('状态栏只剩状况（不再夹一个同步按钮）', !footSpans.some((t) => t === '同步'), JSON.stringify(footSpans));
 
   const statusSpans = await page.evaluate(() =>
     [...document.querySelectorAll('footer span')]
@@ -171,36 +184,26 @@ step('顶栏 / 状态栏：手机上只留必要的');
   ok('状态栏不再堆文件数/凭据/时间', !statusSpans.some((t) => /个文件|凭据|同步于/.test(t)), JSON.stringify(statusSpans));
 }
 
-step('稿纸：工具栏同样横滚，正文没被挤扁');
+/*
+ * 正文在手机上没被挤扁。
+ * 这条原先验的是稿纸（富文本），富文本 2026-09-26 整块删掉之后改验 md 正文 ——
+ * 要看的是"纸上那块字"在 412px 里站不站得住，跟用哪套编辑器无关。
+ */
+step('正文：左右都没溢出，也没被缩成小字');
 {
   await page.click('[data-drawer-toggle]');
   await page.waitForTimeout(400);
-  await page.click('[data-file="notes/2026-09-21-稿纸.rich"]');
-  await page.waitForTimeout(900);
-
-  const t = await page.evaluate(() => {
-    const el = document.querySelector('[data-rich-toolbar]');
-    const cs = getComputedStyle(el);
-    return { wrap: cs.flexWrap, scrollW: el.scrollWidth, clientW: el.clientWidth, h: el.getBoundingClientRect().height };
-  });
-  ok('稿纸工具栏不换行', t.wrap === 'nowrap', t.wrap);
-  ok('稿纸工具栏可横滚', t.scrollW > t.clientW, `scrollW=${t.scrollW} clientW=${t.clientW}`);
-  ok('稿纸工具栏只占一行', t.h < 60, String(t.h));
-
-  // 弹层贴边：桌面上是居中的小浮层，手机上居中就会有一半在屏外
-  await page.click('[data-rich="color"]');
-  await page.waitForTimeout(300);
-  const pop = await page.locator('[data-rich-pop]').boundingBox();
-  ok('颜色弹层完全在屏幕内', pop.x >= 0 && pop.x + pop.width <= 412, JSON.stringify(pop));
-  await page.screenshot({ path: `${OUT}/04-稿纸与弹层.png` });
+  await page.click('[data-file="notes/2026-09-21-随手.md"]');
+  await page.waitForTimeout(1200);
 
   const doc = await page.evaluate(() => {
-    const el = document.querySelector('[data-rich-doc]');
+    const el = document.querySelector('.milkdown-wrap .ProseMirror');
     const r = el.getBoundingClientRect();
     return { w: r.width, left: r.left, fontSize: getComputedStyle(el).fontSize };
   });
   ok('正文左右都没溢出屏幕', doc.left >= 0 && doc.left + doc.w <= 412, JSON.stringify(doc));
   ok('正文没被缩成小字', parseFloat(doc.fontSize) >= 15, doc.fontSize);
+  await page.screenshot({ path: `${OUT}/04-正文不挤扁.png` });
 }
 
 step('触摸设备上不该出现「只有 hover 才出来」的删除按钮');
@@ -262,8 +265,10 @@ step('桌面（1500×920）：一个字都不该变');
   const box = await d.locator('[data-drawer]').boundingBox();
   ok('侧栏常驻、272px、贴着左边缘', Math.abs(box.x) < 1 && Math.abs(box.width - 272) < 1, JSON.stringify(box));
 
-  ok('桌面上也没有顶栏', (await d.locator('header').count()) === 0);
-  ok('同步按钮文字回来了', await d.locator('[data-sync] span').isVisible());
+  ok('桌面上顶栏也只有一条', (await d.locator('header').count()) === 1);
+  ok('收栏那两颗箭头在桌面出现', await d.locator('[data-left-toggle]').isVisible());
+  ok('同步按钮文字回来了（dock 那三颗都带字）', await d.locator('[data-sync] span').isVisible());
+  ok('同步在 dock 里，挨着设置', (await d.locator('[data-dock] [data-sync]').count()) === 1);
 
   const statusSpans = await d.evaluate(() =>
     [...document.querySelectorAll('footer span')].filter((s) => s.offsetParent !== null).map((s) => s.textContent.trim()),

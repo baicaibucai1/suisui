@@ -27,7 +27,7 @@ function decodeHref(href: string): string {
 /**
  * 把 PROPFIND 的响应解析成相对路径列表。
  *
- * @param basePath 库在服务器上的根（比如 `/dav/碎碎`）。
+ * @param basePath 库在服务器上的根（比如 `/dav/QuitWriteRead`）。
  *   href 会带上它，必须剥掉；**第一项就是根目录自己**，也要一起去掉。
  */
 export function parsePropfind(xml: string, basePath: string): DavItem[] {
@@ -50,7 +50,7 @@ export function parsePropfind(xml: string, basePath: string): DavItem[] {
   return out;
 }
 
-/** `/dav/碎碎` → `/碎碎` 之类；末尾的斜杠一律去掉 */
+/** `/dav/QuitWriteRead` → `/QuitWriteRead` 之类；末尾的斜杠一律去掉 */
 function normalizeBase(basePath: string): string {
   const p = stripScheme(decodeHref((basePath ?? '').trim())).replace(/\/+$/, '');
   return p;

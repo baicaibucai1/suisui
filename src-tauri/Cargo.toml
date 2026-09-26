@@ -1,19 +1,35 @@
 [package]
 name = "suisui"
 version = "0.1.0"
-description = "碎碎 —— 个人无关紧要的文字"
+description = "QuitWriteRead —— 个人无关紧要的文字"
 authors = ["baicaibucai1"]
 edition = "2021"
 rust-version = "1.77"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# 同下面那条 indexmap：**构建依赖图是单独解析的**（cargo 的 resolver 2），
+# 所以 `tauri-build → schemars 0.8 → indexmap 1.9` 这条线要在这儿再开一次 std。
+indexmap = { version = "1.9.3", default-features = false, features = ["std"] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# 目录选择对话框：仓库是「本机的一个文件夹」，选它需要一个系统对话框
+# （Tauri 2 把原生对话框拆成了插件）
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 # 坚果云的 WebDAV 要从这里发 —— 浏览器里过不去 CORS（见 src/main.rs 的说明）
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2", "macos-system-configuration"] }
+#
+# 这一条**不是我们用的**，是为了修依赖树里的一个坑：
+#   tauri-utils → schemars 0.8 → indexmap 1.9。indexmap 1.9 **没有 default feature**，
+#   有没有 std 全靠它的 build.rs 现场探测（`autocfg` 编译一个 `extern crate std;`
+#   试一下）。这台机器上那个探测失败了 → 走到 no_std 分支，
+#   于是 `IndexMap` 变成三个必填泛型，schemars 里那句 `IndexMap<K, V>` 就编译不过：
+#     error[E0107]: struct takes 3 generic arguments but 2 generic arguments were supplied
+#   在这儿显式把 std 打开就行 —— cargo 的 feature 是按**包版本**合并的，
+#   我们这一条和 schemars 那条都落在 1.9.3 上，std 一旦打开两边通用。
+indexmap = { version = "1.9.3", default-features = false, features = ["std"] }
 
 [profile.release]
 codegen-units = 1

@@ -1,4 +1,4 @@
-# suisui-app · 碎碎（demo）
+# QuitWriteRead
 
 读写**真实 md 文件**并与 GitHub 双向同步的客户端。目标形态：一份 Tauri 2 代码出 Windows exe + Android apk。
 **当前阶段**：桌面端 web demo + 移动端（手机浏览器直接可用，带 PWA 外壳）。还没打包。
@@ -15,6 +15,29 @@ node node_modules/vite/bin/vite.js preview    # 产物 → http://localhost:5184
 ```
 
 （受限终端里 `npm run dev` 不可用，直接跑 vite 的 JS 入口更稳。）
+
+### 桌面端（Tauri）
+
+```bash
+npx tauri dev          # 桌面开发窗口
+npx tauri build        # 出 exe / 安装包
+```
+
+⚠️ 本机的 rustc 是 `x86_64-pc-windows-gnu`，链接器 / ar / **dlltool** 都在
+`C:\Users\Sogap\msys64\mingw64\bin`。前两个已经在 `src-tauri/.cargo/config.toml` 里写死成绝对路径，
+**dlltool 却是以裸命令名调用的**（rustc 的 windows-link 生成导入库用）——
+它只认 PATH。所以跑之前要先把那个目录挂上 PATH，否则报
+`error calling dlltool 'dlltool.exe': program not found`：
+
+```bash
+PATH="/c/Users/Sogap/msys64/mingw64/bin:$PATH" npx tauri dev
+```
+
+⚠️ `schemars 0.8 → indexmap 1.9` 那条依赖线也有个坑：indexmap 1.9 **没有 default feature**，
+有没有 std 全靠它 build.rs 现场探测，这台机器上探测失败 → `IndexMap` 少一个默认泛型参数，
+schemars 编译不过（`error[E0107]`）。已在 `src-tauri/Cargo.toml` 里显式声明
+`indexmap = { version = "1.9.3", features = ["std"] }` 把它顶回来（[dependencies] 和
+[build-dependencies] **各一条**——两个依赖图是分开解析的，少一边都不行）。
 
 **构建走 `scripts/build.mjs`，不要直接 `vite build`。** 它先把产物建到暂存目录、自检通过后再换掉
 `dist` —— 因为本机有两个 Windows 怪脾气，直接构建会在**把上一份产物删到一半时失败**：
@@ -54,24 +77,100 @@ VITE_GH_REPO=ramblings
 VITE_GH_BRANCH=main
 ```
 
-凭据在**设置面板的「同步」分区**里配（设置入口在左下角 dock 的齿轮上；
+凭据在**设置对话框的「同步」一节**里配（设置入口在左下角 dock 的齿轮上，弹开的是
+**遮罩 + 居中大卡**：左列「常规 / 同步 / 阅读 / 关于」四节导航，右边是那一节的内容；
 没配凭据时齿轮顶一颗红点）。demo 存 localStorage，正式版进系统凭据库。
 ⚠️ 凭据按「地址 + 端口」隔离 —— 电脑上填过不代表手机上填过，换设备要重填一次。
 
 ## 已实现
 
+- **仓库 = 本机的一个文件夹**：笔记就是磁盘上真的一堆 `.md`，程序只是这个文件夹的一个视图 ——
+  可以拿别的编辑器直接改、拿网盘同步、随时换一个。第一次打开会**挡一道让人选**（这是全应用
+  唯一一处"选错了要搬家"的决定）：桌面端给「程序自带的目录」并把它写明白是哪个路径，
+  也可以自己挑一个；浏览器那一路走 File System Access，**Safari / Firefox 拿不到目录句柄**
+  就老实说"不支持"，并退回「先存在浏览器里」（那一档不粉饰成"已保存"，设置页明说它不在磁盘上）。
+  ⚠️ 五条实现上的讲究：① 仓库里**顶层那个 `books/` 目录留给书**，别拿它当笔记目录
+  （这一条在三套驱动里都被当作隐藏目录滤掉，是刻意保留的名字）；
+  ② **localStorage 里不再存 `files`** —— 仓库是唯一真相，
+  存第二份就会出现"刷新前后不一致"这种没人能解释的现象（老版本那份会在第一次打开仓库时搬进去）；
+  ③ 存盘是**订阅 `files` 的差异**（不是在每个 action 里各写一遍），新增动作不会漏，
+  改一个字也只写那一个文件；
+  ④ **仓库没读完不许比对** —— 那时 `files` 是空的，
+  拿空表去比对的结论是"远端那一堆本地全删了"，一步同步就把远端清空了；
+  ⑤ `.folder`（空目录的标识文件）**不能**按"点开头就是隐藏文件"滤掉，否则刷新后自建的空目录全没了。
+  另：换仓库**不会**搬旧文件夹里的东西，新仓库里有什么、左边就列什么 —— 换之前先在旧仓库同步一次。
+- **两侧边栏可以拖宽**：左栏右边缘、右栏左边缘各有一条分隔条（悬停才显形），
+  按住拖就能调那一列多宽，范围 200–520px，**双击复位到出厂宽度**（272 / 250）。
+  宽度跟着人走（persist），刷新后还是你拖出来的那份。
+  ⚠️ 两条实现上的讲究：① 拖的时候**只改显示、松手才落盘** —— 每动一像素就写一次 persist
+  会把整个 files（笔记正文）序列化上百遍，手感当场变糊；
+  ② 宽度走 CSS 变量而不是内联 `width` —— 内联会压过手机抽屉那条媒体查询，
+  抽屉要么撑爆屏幕要么窄成一条缝。手机上两侧没有分隔条（那一侧是浮上来的抽屉，宽度由视口定）。
 - **GitHub Git Data API 直连**：api.github.com 放行 CORS，纯浏览器调用，不需要任何后端
 - **三路比对**：本地 blob sha1 × 上次同步快照 × 远端 sha → 新增 / 修改 / 删除 / 冲突
 - **一次同步一个 commit**：blobs → trees → commits → refs，四步走完
 - **删除可推**：tree 条目 `sha: null`
-- **创建笔记**：左下角「创建笔记」→ 只问标题 + 落哪个目录（碎念 / 随笔 / 摘抄 / 草稿），
+- **创建笔记**：左栏顶部的 **+** 一点即建 —— **不问路径，也不打断你输标题**。
+  落点 = **你点选的那个文件夹**（目录行高亮 + 左侧一条竖条），没点过就跟着当前打开的那篇走，
+  再没有才落到 `thoughts`；列表底部常驻一行小字写着会落在哪。
+  标题先叫「未命名」，进正文改就行。
   路径 `thoughts/2026-09-21-雨天.md` 由 `note.ts` 生成（中文原样进文件名、挡非法字符、超长按码点截断、
-  重名加 `-2` 绝不覆盖）。回车即建，建完自动展开目录、打开编辑器、**把光标放到正文末尾**
+  重名加 `-2` 绝不覆盖）。建完自动展开目录、打开编辑器、**把光标放到正文末尾**
+- **导入 md**：文件树工具条上那颗向下的箭头（或把文件拖进列表）把本机的 md 收进库里，
+  可多选，认 `.md / .markdown / .mdown / .txt`。落点跟「新建笔记」同一个目录（底下那行小字写着是哪个）。
+  **编码先按 utf-8 严格解，解不通就换 gb18030** —— Windows 上大量老 md 是 GBK，
+  不兜底就是一篇满屏问号的笔记（这条不报错，只会静默写坏，所以 `tests/mdimport.test.mjs` 钉死了）。
+  **撞名加 `-2`，绝不覆盖**：原来那篇一个字都不动。不是 md 的、或者超过 8MB 的直接跳过，
+  并且**说完就报账**：「导入 2 篇，1 篇因重名改了名，1 个不是 md，跳过」。
+  导入完切到第一篇，接着就能读能改。
+  ⚠️ **不加日期前缀**（跟新建不一样）：导入的文件名字就是它的身份，按今天的日期改一次名
+  人就对不上号了；也正因为不加日期，重复导入才会撞到同一条路径上，「-2」这条策略才成立。
+- **改名 · 拖动 · 右键菜单**：文件树按文件管理器那套走 —— **右键**打开菜单（重命名 / 新建笔记 /
+  新建（子）文件夹 / 复制路径 / 复制双链 / 属性 / 删除），**就地改名**（右键 → 重命名，
+  或 F2、或双击那行，回车确认、Esc 取消），**拖到别的目录换位置**（拖目录连里面的一起走，
+  拖到列表空白处 = 挪到根目录）。拖动时有一张跟着指针走的小纸写着"拖的是谁、会落到哪儿"，
+  目标目录实时高亮：能放=墨色圈、放不下=红圈、**拖回原处不画圈**（那是空操作，不是错误）。
+  ⚠️ 改名是这个应用里**唯一会动到别的文件**的本地操作，所以它连带做三件事：
+  全库指向它的 `[[双链]]` 改成新名（`#小节` 和 `|显示文字` 原样留着）、它自己正文第一行的标题
+  跟着改（**只在逐字等于旧名时才动**，你自起的小标题不碰）、编辑器里打开的还是同一篇。
+  重名和"拖进自己里面"**当场拦下并说清原因**，不静默失败、也不自动加 `-2`
+- **书籍（本地书架，看 epub）**：左栏顶上那条**「书写 / 阅读」分段控件**切到阅读进书架，
+  点「导入 epub」或把书拖进来就行。
+  读某本时**右栏换成这本书的「目录」+「笔记」**：目录点哪章跳哪章、当前章高亮；
+  笔记就是**批注** —— 在正文里划一段字浮出工具条，可以只划重点（标一道底色），
+  也可以写想法（留下一句话，跟划的那句绑在一起）；右栏按正文顺序列出全书批注，
+  点一条滚回那一句并把那段点亮两秒，就地能改能删。
+  **左栏不跟着让位**：读书时它仍然是书架，正在读那本写着「正在读」，可以直接翻下一本。
+   正文连续滚动，另有**书内搜索**（列出命中章节 + 上下文，点一下跳过去并高亮）、
+   **排版四项**（字体 黑体/宋体/楷体/等宽 · 字号 13~28 · 行距 1.4~2.4 · 纸色 纯白/米黄/夜间/豆绿/淡青）、
+   以及**记住读到哪**（书架上直接标「读到 46%」）。
+   排版有两个入口：抬头那个「Aa」面板（读的时候随手调）和设置对话框的「阅读」一节
+   （一次调齐，带一块跟正文走同一套 CSS 的实时预览）—— **两处读写同一份偏好**
+   （`ReaderPrefs`，存 IndexedDB 的 prefs 表，经 `clampPrefs` 归一），改哪儿都算数。
+   字体四档全是**系统字体栈**（打包一个中文字体要十几 MB，不值当），纸色每档自带
+   墨色 / 链接线色（`--book-*` 一组变量，`data-book-theme` / `data-book-font` 两个属性换档）。
+  抬头那个「←」是**合上这本书**（回到书架上什么都没打开的状态），
+  因为目录搬走之后，"不读了"这个动作没有一个自然的位置。
+  切换是**两边各记各的**：`side`（在哪一边）持久化 —— 刷新后还在上回待的那边；
+  `lastBookId`（上次读的那本）也持久化 —— 书架顶上有一张「继续读《X》· 读到 32%」的卡，
+  点一下接着读。但**不会自作主张把书翻开**：重开一律先回书架，哪本在读交给那张卡说。
+  两边来回切时「在读哪本」不丢 —— 切去写笔记再切回来，还是刚才那一页。
+  ⚠️ 书**不进 `files`、不参与同步**：存在 IndexedDB 里（一本书几 MB，localStorage 装不下），
+  所以它们不会出现在待同步里，也不会被推到远端 —— 这是刻意的。
+  解析自己写（`lib/epub.ts`，解压用 8KB 的 fflate，容器 / OPF / nav / ncx 全用正则，
+  跟 `davxml.ts` 一个路子，Node 里能单测）；**书里的脚本 / 样式 / 外链 / `on*` 事件一律剥掉**，
+  图片换成 blob URL。⚠️ **不用书自带的 CSS** —— 那些样式常写死字号和颜色，照搬的话
+  字号调节和夜间模式就都失效了，所以只保留结构，排版归我们（见坑 18）
 - **删远端要点确认**：见下面「坑 4」——删除是不可逆的，默认只拉不删
 - **不假装同步好了**：本地一改，顶栏立刻切成「有本地改动，还没比对」。
   原先它会继续显示上一次比对的结果 —— 刚建完笔记却写着「与远端一致」，是误导
+- **「待同步」只给结论，不给清单**：抬头那行写着「↑ 3 待推送 / ↓ 1 待拉取 / ⚠ 冲突」和总项数，
+  **具体是哪几个文件默认收着，点抬头那一行才展开**（再点收回）。改动一多那片清单会把文件树
+  挤掉半屏，而多数时候人只想知道"该不该同步"。
+  ⚠️ 收起的是**清单**，不是状态：抬头的计数、以及「本地和远端一致 / 还没比对」那两条提示
+  照旧显示 —— 那两条回答的是"现在要不要同步"，跟着收起来就等于把状态藏了
 - **左侧只列文字文件**：`.gitignore`、`update.bat`、`scripts/*`、根目录 README 这类程序文件默认不展示，
-  标题栏的眼睛图标可切换「显示全部」。⚠️ **过滤只在展示层** —— 同步永远走全量 `files`，
+  搜索框下面那行小字右半的「隐藏 N」小钮可切换「显示全部」。⚠️ **过滤只在展示层** —— 同步永远走全量 `files`，
   否则这些文件在本地"不存在"会被三路判定当成"你删了它们"，一次同步就把仓库清空
 - **冲突不丢字**：远端版本另存 `xxx.conflict-日期.md`，本地版本保留
 - **格式工具栏**（常驻一行，14 个）：正文 / H1 / H2 / H3 ｜ 加粗 / 斜体 / 删除线 / 行内代码 / 链接 ｜
@@ -80,12 +179,9 @@ VITE_GH_BRANCH=main
   （这样源码框里的操作也完全可单测）。再点一次相同的块级工具会**取消**（列表/引用走 `lift`，标题走 `paragraph`）
 - **所见即所得编辑**（Milkdown / Crepe）＋ 源码模式切换
 - **文本纪律**：统一 LF + 无 BOM，否则每次保存 sha 都变，同步永远"脏"
-- **第二种格式「稿纸」**（`.rich`）：和 md **并列，不互转**。文件本身就是一份合法 HTML ——
-  顶部可选一个 `<style>` 承载**这篇自己的 CSS**，下面是正文 HTML；改名成 `.html` 用浏览器打开
-  也是对的，不会被锁死在这个程序里。渲染时那段 CSS 被包进 `@scope (.rich-scope)`，只作用于这一篇。
-  25 个工具分四组，第四组是 md 语法层面根本做不到的**样式命令**：文字色 / 底色高亮 / 字号 / 字体 /
-  卡片块 / 缩进。另有「这篇的 CSS」抽屉（可手写，也可一键套 5 套主题预设）和源码模式。
-  创建笔记时选格式，后缀、初始正文、文件树图标都会跟着变
+- **格式只有一种：markdown。** 曾经还有第二种「稿纸」（`.rich`，自带这篇的 CSS），
+  2026-09-26 整块删掉了 —— 两套编辑器两套工具栏，换来的是一半的精力在维护一套没人写的东西。
+  现在 `createNote` 只有 `.md` 一条路，文件树里除 md 以外的条目都是附件（图片 / PDF）。
 - **编辑器按需加载**：编辑器带着 Milkdown / Crepe / KaTeX，压缩后 **1.1MB**，而首屏真正需要的
   只有顶栏和文件列表。所以 `App.tsx` 里 `lazy(() => import('./components/EditorPane'))`，
   没选文件时渲染轻量的空态（`components/EmptyState.tsx`，**不能把它写回 EditorPane**）。
@@ -203,57 +299,80 @@ OneDrive 给 quickXorHash，算法跟本地不同 —— 直接拿来当基线�
 
 规则都在 `lib/folders.ts`：目录名清洗（`..` 不许跳出库、Windows 非法字符、每段截断 60 字）、
 建/删目录、嵌套建树。文件树是真正的多级树（原来只有一层分组），空目录也显示，
-"创建笔记"的去处里会带上自己建的目录。
+点一下目录行就能把它设成新笔记的落点 —— 自己建的目录也照样能落。
+
+**改名和搬家也在同一个文件里**（`renameEntry` / `moveEntry`），因为两者底下是同一件事：
+**把一个路径前缀换成另一个**（`remap`）。所以目录改名时整棵子树跟着换前缀、标识文件名始终是
+`.folder`（它是协议的一部分，不能被当成普通文件名一起换）；拖动搬家则是"父路径换了、名字没动"。
+⚠️ `moveEntry` 里那条"不许挪进自己里面"不是洁癖：把目录挂到它自己的后代下，
+前缀替换会当场把整棵子树绕成一个环。拖动的手感（6px 阈值、只认鼠标和笔、
+手指在 Android 上会把长按让给系统菜单）在 `components/FileTree.tsx` 里。
 
 ## 还没做
 
 - **打真正的包**：Android apk 和 Windows exe 都还没出。缺 JDK / Android SDK+NDK / MSVC 工具链，
   清单和步骤写在 [`ANDROID.md`](./ANDROID.md) 里。
   桌面端骨架（`src-tauri/`）已经搭起来，目前只提供一个 `dav_request` 命令给坚果云用
-- 真实文件系统（现在工作副本在 localStorage；桌面版要落到 `C:\AI_Production\碎碎`）
+- 真实文件系统（现在工作副本在 localStorage；桌面版要落到 `C:\AI_Production\QuitWriteRead`）
 - 系统凭据库（现在 token / 坚果云应用密码都在 localStorage）
 - OneDrive 的 OAuth 授权（要 Azure 应用的 client_id 走 PKCE）
 - 安卓端的坚果云（同样卡在 CORS，需要原生插件走 Kotlin 发 WebDAV）
 - 冲突的三路自动合并（现在只留副本）
 - 附件的**增量同步**：现在改一个字节也要整个文件重传（附件走的是全量 base64）
-- 双链还差几件事：**改名不断链**（现在改名了，别人引的还是旧名字）、
-  源码模式下的链接高亮与补全（textarea 做不到）
+- 双链还差一件事：**源码模式下的链接高亮与补全**（textarea 做不到）
+- 手机上不能用拖动换层级（手指长按要留给系统的右键菜单），目前只能改文件名和新建
+- **书籍**：书的同步（现在是纯本地，见上面「已实现」那条）、书签 / 划线摘录导出成笔记、
+  换正文字体、分页翻页（现在只有连续滚动）、从书里复制文字时带出处
 
-> 双链这一摊已经补完的三件：**标签全局视图**（左栏「标签」按钮 → 全库标签按用量排序，
+> 双链这一摊已经补完的四件：**标签全局视图**（左栏「标签」按钮 → 全库标签按用量排序，
 > 点一个进筛）、**未建链接批量建**（右栏「待建」扫全库悬空链接，多选一键建，
 > 落点按"引用最多的目录"投票）、**`![[某篇]]` 嵌正文**（真把那篇渲染进来，
-> 带黄铜竖线 + 抬头 + 「打开原文」；防环、深度上限、标题降级都做在 `lib/embed.ts`）。
+> 带黄铜竖线 + 抬头 + 「打开原文」；防环、深度上限、标题降级都做在 `lib/embed.ts`）、
+> **改名 / 搬家不断链**。
+>
+> 改名联动是**保形**的：全库 `[[旧名]]` 跟着改成新名，`#小节` / `|显示文字` 都留着，
+> 而且带路径的写法也是各归各位 —— `[[读书/2026/书评]]` 改完是 `[[读书/2027/书评]]`
+> （不是被压成裸名 `[[]]`）。改写表按**整棵搬家子树**逐条建（见 `retargetMap` +
+> `rewriteRefs`），所以改目录名、拖整棵目录走都不会漏。
+> 名字没变的搬家只改全路径那档，裸名链接新旧相同会被跳掉 —— 那个"几处引用跟着改了"
+> 的数字是给人看的，不能虚报。
+>
+> 拖到折叠的目录上**压住不动 0.6 秒会自动展开**（`HOVER_EXPAND_MS`），
+> 划过不停留的不算 —— 否则一路划过去会把沿途目录全展开一遍，那不是帮忙是添乱。
 
 ## 测试
 
 ```bash
 node tests/decide.test.mjs        # 三路判定 14 例（Node 24 直接跑 .ts）
 node tests/note.test.mjs          # 笔记命名规则 31 例（非法字符 / 超长 / 重名 / 本地日期）
+node tests/mdimport.test.mjs      # 导入 md 32 例（utf-8 / BOM / **GBK 兜底** / 后缀判定 / 落库路径 / 重名 -2）
 node tests/visible.test.mjs       # 左侧「哪些不该显示」25 例
 node tests/mdkit.test.mjs         # md 工具栏源码模式 67 例（标题 / 列表 / 行内包裹 / 选区映射）
-node tests/rich.test.mjs          # 稿纸格式内核 50 例（拆合 / 圈作用域 / 清洗 / 主题预设）
 node tests/folder.test.mjs        # 文件夹 58 例（目录名清洗 / 标识文件 / 空目录推导 / 嵌套建树）
 node tests/davxml.test.mjs        # WebDAV 的 PROPFIND 解析 15 例（编码 / 库根剥离 / 各家写法差异）
-node tests/links.test.mjs         # 双链与标签 78 例（解析 / 代码块不算 / 标题去日期前缀 / 转义还原）
+node tests/links.test.mjs         # 双链与标签 97 例（解析 / 代码块不算 / 标题去日期前缀 / 转义还原）
+node tests/rename.test.mjs        # 改名与搬家 89 例（名字净化 / 子树换前缀 / 重名与"拖进自己"拦截 / 双链改写 / 保形改写 / 标题联动）
 node tests/binary.test.mjs        # 附件 54 例（后缀判定 / base64 往返 / 大块不爆栈 / 字节指纹 / ![[嵌入]] 解析）
 node tests/embed.test.mjs         # 嵌正文 25 例（防环 / 自嵌 / 深度上限 / 标题降级 / 转义 / 只读链接）
+node tests/readerstyle.test.mjs   # 阅读排版守卫 35 例（选项表自洽 / 脏值归一 / 字号夹边界 / 坏 id 退第一档）
+node tests/epub.test.mjs          # epub 解析 44 例（真造 zip：container→opf→spine 三套坐标系 / nav / ncx / 兜底目录 / 坏书 / 去标签 / 书内搜索）
+node tests/repo-e2e.mjs           # 浏览器：仓库落在哪 → 建了就进仓库 → 刷新还在 → **localStorage 里没有第二份 files** → 改名后旧路径消失 → 删了就没 → 设置页照实说 21 例（DEV-only）
+node tests/book-e2e.mjs           # 浏览器：切换 → 导入 epub → 书架 → 连续滚动 → 目录跳转 → 书内搜索 → **字体·字号·纸色** → 记住读到哪 → **批注（划词 / 写想法 / 改 / 删 / 跨重建还在 / 底色对齐）** → 继续读 → 刷新还在 → 删 109 例
 node tests/link-e2e.mjs           # 浏览器：高亮 → Ctrl+点跳转 → 点没有的就建 → 补全 → 标签筛选 → 反链面板
 node tests/wiki-e2e.mjs           # 浏览器：标签全局视图 → 待建批量建（落点）→ ![[某篇]] 嵌正文 → 防自嵌
 node tests/attach-e2e.mjs         # 浏览器：添加图片 → 看图 → PDF 画在 canvas 上翻页 → 正文嵌图 → 超限被拦
 node tests/folder-e2e.mjs         # 浏览器：建多层文件夹 → 空目录看得见 → 往里写笔记 → 删（含确认）
+node tests/import-e2e.mjs         # 浏览器：选文件导入 → **GBK 解出来是中文** → 撞名变 -2 且原篇不动 → 非 md 被挡并报账 → 拖入 22 例（DEV-only，靠 __suisui 喂库）
+node tests/rename-e2e.mjs         # 浏览器：右键菜单 → 就地改名（双链 + 正文标题跟着改）→ 拖动换层级（含悬停展开折叠目录）→ 属性 → 复制 78 例
+node tests/layout-e2e.mjs         # 浏览器：右栏常驻 → 大纲 → 关系面板 → 左栏搜索 → 待同步清单收起 / 展开 → 右栏收起 / 展开走**顶栏**那颗（收起 = 整列消失）→ 左栏同理 → 同步在状态栏 + A± 调编辑器字号 → **两侧边栏拖宽度（含上限 / 双击复位 / 刷新记住 / 手机上没有）** → 手机视口 64 例
 node tests/smoke.mjs              # 浏览器：拉取 → 打开文章 → 创建笔记 → md 工具栏 → 截图
-node tests/rich-e2e.mjs           # 浏览器：创建稿纸 → 工具栏改字 → 写这篇的 CSS → 源码往返 → 截图
-node tests/settings-e2e.mjs       # 设置面板 29 例（入口在左下角 / 凭据跟着后端走 / 后端不放假按钮 / Esc / 手机全宽 / 壁纸已移除）
-node tests/mobile-e2e.mjs         # 手机视口 57 例（抽屉 / 工具栏横滚 / 触摸尺寸 / 顶栏精简 / 手机壳页 / 桌面不回归）
+node tests/settings-e2e.mjs       # 设置对话框 48 例（入口在左下角 / 居中大卡 + 左列分节 / 凭据跟着后端走 / 后端不放假按钮 / 阅读节改一处读处跟着变 / Esc 与点遮罩 / 手机铺满 / 壁纸已移除）
+node tests/mobile-e2e.mjs         # 手机视口 58 例（抽屉 / 工具栏横滚 / 触摸尺寸 / 顶栏精简 / 同步钮在状态栏 / 手机壳页 / 桌面不回归）
 node tests/pwa-e2e.mjs            # 产物上的 PWA 15 例（SW 注册 → 断开网络仍能打开）
 node tests/lazy-e2e.mjs           # 编辑器按需加载 21 例（入口包里没有编辑器 / 首屏不拉 / 加载中给骨架）
 node tests/push-roundtrip.mjs     # 端到端：新建 → 推送 → 删除 → 确认 → 再推送（会真的动仓库）
 node scripts/gen-icons.mjs        # 重新生成主屏图标（用本机 Edge 渲染，不引原生依赖）
 ```
-
-稿纸那套 e2e 里最要紧的一条不是"按钮亮没亮"，而是**用户写的 CSS 真的能生效**：
-测完预设直接读 `getComputedStyle(文档根)`，断言背景是预设里那个颜色。这条同时验证了
-`@scope` 被支持、以及 `@layer base` 的让路是真的（见坑 7）。
 
 工具栏那节**不是在 DOM 上点按钮看它变不变色**，而是点完真的敲字进去、再从 store 读回 markdown 断言
 （`点加粗后敲的字被 ** 包住`）—— 只有这样才同时证明「命令跑通了」和「焦点还给编辑器了」。
@@ -325,18 +444,18 @@ node scripts/gen-icons.mjs        # 重新生成主屏图标（用本机 Edge �
 修法：聚焦前先看一眼文档末尾，若是标题就补一个空 `paragraph`（`EditorPane.ensureTrailingParagraph`）。
 
 **7. `@scope` 里的选择器不加特异性 —— 默认排版会反过来压死用户样式。**
-稿纸想让用户自己写 CSS，范围用 `@scope (.rich-scope)` 圈住。但按 CSS Cascade 6，
-**`@scope` 不给里面的选择器加特异性**：用户写 `h1 { color: … }` 就是 `(0,0,1)`，
-而默认排版若写成 `.rich-scope h1` 就是 `(0,1,1)` —— 用户不写 `!important` 永远改不动标题颜色，
-「这篇的 CSS」当场变成摆设。而这件事**不报错、不警告**，界面上只是"我写的怎么没反应"。
-修法：稿纸的默认排版整块塞进 `@layer base`。未分层样式一律压过分层样式，用户怎么写都赢。
-⚠️ 加默认样式时**别搬出那个图层**，也别改成 `.rich-scope h1` 那种前缀（那等于把用户锁死）。
-e2e 里专门为此留了断言：套完「夜读」预设后读 `getComputedStyle(文档根)`，颜色必须是预设里那个。
+（这条的经验来自 2026-09-26 删掉的稿纸，代码已不在，留着是因为这个 CSS 脾气还会再撞到。）
+按 CSS Cascade 6，**`@scope` 不给里面的选择器加特异性**：用户写 `h1 { color: … }` 是 `(0,0,1)`，
+而默认排版若写成 `.scope-root h1` 就是 `(0,1,1)` —— 用户不写 `!important` 永远改不动。
+而这件事**不报错、不警告**，界面上只是"我写的怎么没反应"。修法：默认排版整块塞进 `@layer base`
+（未分层样式一律压过分层样式）；也别改成 `.scope-root h1` 那种前缀，那等于把用户锁死。
 
 **8. 回车提交时，这个回车的"默认动作"会漏进刚打开的编辑器。**
 新建笔记是回车提交 → 提交里同步改 store → 新文件当场打开、正文编辑器挂载并抢到焦点；
+（**注**：创建入口后来改成「一键建、零输入」，这条回车路径已不存在；但把光标送进正文的
+`focusTick` 那段还没变，别顺手删。）
 可**按键的默认动作是在事件处理完之后才执行的**，此时焦点已经不在那个输入框上了，
-于是这个回车落进正文，在文首插了一个空块。表现：新建的稿纸凭空多出 `<h1><br></h1>`，
+于是这个回车落进正文，在文首插了一个空块。表现：新建的笔记凭空多出 `<h1><br></h1>`，
 而且它还会触发一次 `input`，把污染过的内容写回 store —— 看起来像"初始正文模板写错了"。
 点「创建」按钮不会复现，只有回车会，所以特别容易漏。
 修法：`FileTree` 里两个输入框的 Enter 分支都先 `e.preventDefault()` 再执行提交。
@@ -406,6 +525,38 @@ Crepe 给 `.ProseMirror p` 带了 margin **和 `padding: 4px 0`**。`![[某篇]]
 ② 换了构建产物，但预览面板复用了旧页面，没做一次真正的新导航。
 判断方法：**开一个全新端口**（或 Playwright 无痕 context）打同一个服务 ——
 SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整套缓存。
+
+**16. 用它自己的手势拖行时，浏览器会把文字选中，然后下一次拖动会被"原生拖拽"掐死。**
+症状很有欺骗性：**第一次拖动完全正常，第二次拖动毫无反应**（`pointermove` 也不来了）。
+真因是行里的文字在按下拖动时开始被选中，第二次按下的位置落在这段选中文本里，
+浏览器把它理解成"要拖动这段文字"→ 发起原生 drag → 对我们正在跑的手势发 `pointercancel`。
+这条只在**连着拖两次**时出现，单次拖动、或者换一行再拖都测不到 —— 所以它躲过了所有手写验证。
+修法两条一起上：行上 `select-none`（行不是给人选文字的地方，Obsidian / VS Code 也这样）
+＋ `onDragStart={e => e.preventDefault()}`（把任何原生拖拽掐死在源头）。
+`tests/rename-e2e.mjs` 里「连拖两次都要能拖」那节就是钉这条的。
+
+> 顺带一条测法上的教训：拖动的落点坐标**必须在按下之前现量**。刚做完操作时顶上会多一条
+> "已改名 / 已移到"的通知条，它把列表整体往下挤 —— 事先量好的坐标到时候指的就是别的东西了，
+> 表现为"拖动有时管用有时不管用"。所以那个测试里等通知条走掉再量。
+
+**17. `vite preview` 开着的时候打包必失败，而且报错全不指向真凶。**
+`npx vite build` 会先 `emptyDir` 清 `dist/`，而 preview 正在服务那个目录 —— Windows 上
+文件被占着删不掉，抛出来的是一长串 rolldown 内部栈（`at emptyDir … at prepareOutDir …`），
+从头到尾不提"端口 5184 还开着"。**打包之前先把 preview 停掉**，打完再拉起来。
+
+**18. 读电子书时，DOM 已经卸载 ≠ 还能读它的滚动位置。**
+「退出书之前最后记一次进度」写在 effect 的清理函数里，但 React 跑清理时节点**已经摘出文档**了，
+此时 `scrollTop` 与 `clientHeight` **都返回 0** —— 照算会得到"在第 0 像素、窗口高 0"，
+于是判定成"读到了最后一章、进度 0%"，把真进度盖掉。症状很怪：**退出一本书，再打开跳到最后一章**。
+修法：存之前先 `if (!box.isConnected || box.clientHeight === 0) return;`。
+（顺带一条同类：章节的 `offsetTop` 要跟 `scrollTop` 同坐标系，滚动容器**必须** `position: relative`，
+否则 offsetParent 跑到外层去，"跳到第三章"会跳错。）
+
+**19. 阅读器不用书自带的 CSS。** epub 里的样式常写死字号、写死白底黑字、写死宽度，
+照搬的结果是"字号调了没反应""夜间模式一半字看不见" —— 而字号 / 行距 / 背景正是阅读器要给的。
+所以只保留**结构**（标题 / 段落 / 引用 / 列表 / 图片 / 表格 / 加粗斜体），排版归 `.book-body`。
+代价是些讲究排版的书会变得朴素一点，这个亏吃得起。
+
 三步排查顺序：先看服务端吐的 asset 是不是磁盘上那份 → 再开无痕看渲染结果 →
 再看 SW 策略。三次都排除了，才轮到"代码有问题"。
 
@@ -418,9 +569,8 @@ SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整�
 | `src/lib/note.ts` | 笔记命名规则：`notePath` / `slugifyNoteTitle` / `dedupePath`（零依赖，可单测） |
 | `src/lib/visible.ts` | 「哪些文件不该显示在左侧」的展示层规则（零依赖，可单测） |
 | `src/lib/mdkit.ts` | md 工具栏**源码模式**的 md 语法改写（零依赖，可单测）＋ 两种模式共用的 `ToolId` / `Active` |
-| `src/lib/rich.ts` | 稿纸格式内核：拆合「这篇的 CSS / 正文」、`scopedCss` 圈作用域、HTML 清洗、主题预设（零依赖，可单测） |
-| `src/lib/folders.ts` | 文件夹：目录名清洗、标识文件、目录推导、嵌套建树（零依赖，可单测） |
-| `src/lib/links.ts` | 双链与标签：解析、名字→路径、反向链接 / 标签索引、补全候选、`unescapeWiki`（零依赖，可单测） |
+| `src/lib/folders.ts` | 文件夹与路径层：目录名清洗、标识文件、目录推导、嵌套建树、**改名 / 搬家**（`renameEntry` / `moveEntry`，共用"前缀替换"）（零依赖，可单测） |
+| `src/lib/links.ts` | 双链与标签：解析、名字→路径、反向链接 / 标签索引、补全候选、`unescapeWiki`、`aliasesOf`、**改名联动** `retargetLinks` / `retitleBody`、本页大纲（零依赖，可单测） |
 | `src/lib/binary.ts` | 附件：后缀判定、MIME、`base64 ↔ 字节`、**字节指纹**、体积上限（零依赖，可单测） |
 | `src/lib/pm-links.ts` | ProseMirror 插件：`[[ ]]` / `#tag` 的装饰（**不动 schema，只加 span**）、`[[` 补全的触发与插入、`![[ ]]` 的嵌入 widget |
 | `src/lib/providers/types.ts` | 同步后端的统一接口 `Remote` + 各家元数据（含"浏览器能不能直连 / 做完没有"） |
@@ -428,18 +578,25 @@ SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整�
 | `src/lib/providers/webdav.ts` | 坚果云实现（WebDAV）。请求走注入的 transport —— 浏览器没有，桌面端才有 |
 | `src/lib/providers/onedrive.ts` | OneDrive 实现（Microsoft Graph）。只接 token，授权留位 |
 | `src/lib/providers/davxml.ts` | PROPFIND 响应解析（零依赖，可单测 —— 用正则而非 DOMParser） |
+| `src/lib/epub.ts` | epub 解析：解压（fflate）→ container → OPF → spine / 目录（nav.xhtml → toc.ncx → 正文标题兜底）、章节→纯文本、书内搜索（零 DOM，可单测） |
+| `src/lib/bookdb.ts` | 书架的 IndexedDB：书目 / 字节 / 进度 / 排版偏好 / **批注**（按 `bookId` 建索引；删书连批注一起清）。**书不进 `files`、不参与同步** |
+| `src/lib/anchors.ts` | 批注的位置：**记纯文本偏移，不记 DOM 节点**（DOM 会被搜索高亮拆了又合，节点序号靠不住）。两端换算都在这儿 |
 | `src-tauri/` | 桌面端骨架。目前只提供 `dav_request`：让坚果云绕开 CORS |
 | `src/lib/sync.ts` | 同步编排（先拉 → 冲突留副本 → 确认后才删 → 再推） |
-| `src/lib/store.ts` | Zustand 状态（本地工作副本 + 快照）。**异步操作带序号，防止旧操作覆盖新状态** |
-| `src/components/RichPane.tsx` | 稿纸编辑器（contenteditable，非受控）＋ 落盘时机控制 |
-| `src/components/RichToolbar.tsx` | 稿纸的 25 个工具 + 色板 / 字号字体弹层 |
-| `src/components/EditorShell.tsx` | 编辑器外壳（台面 → 纸面 → 路径栏 / 模式开关 / 面包屑）。md 与稿纸共用，**必须留在主包里** |
+| `src/lib/store.ts` | Zustand 状态（本地工作副本 + 快照）。**异步操作带序号，防止旧操作覆盖新状态**；`side`（书写 / 阅读在哪边）与 `lastBookId`（上次读的那本）持久化，`currentBook` 不持久化 —— 重开先回书架 |
+| `src/components/EditorShell.tsx` | 编辑器外壳（台面 → 纸面 → 路径栏 / 模式开关 / 面包屑）。**必须留在主包里** |
 | `src/components/EmptyState.tsx` | 编辑区的两种"还没有编辑器"状态（空态 / 加载骨架）。**必须在主包里** —— 见「已实现」里的按需加载 |
 | `src/components/WikiHints.tsx` | `[[` 补全浮层（跟着 `[[` 那个字符定位，mousedown 掐默认动作以保住编辑器焦点） |
 | `src/components/BacklinkPane.tsx` | 正文下方的反向链接 / 标签 / 待建笔记面板（有关系才出现） |
 | `src/components/PreviewPane.tsx` | 附件预览：图片 + 体积 / 缩放 / 下载。**必须轻** —— 里面的 pdf.js 是二级懒加载 |
 | `src/components/PdfView.tsx` | PDF：pdf.js 渲到 canvas（翻页 / 缩放 / 适应宽度）。只在真打开 PDF 时才下载 |
-| `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（同步 + 设置）** / 文件树（含「创建笔记」、标签筛选） / 编辑器 / **格式工具栏** / 差异列表 / 状态栏 / 图标集 |
+| `src/components/ContextMenu.tsx` | 右键菜单：贴光标定位 + 贴边翻转、Esc / 点外面 / 滚动 / 失焦都关、方向键能走 |
+| `src/components/EntryInfo.tsx` | 「属性」面板：路径 / 类型 / 大小 / 字数 / 标签 / 关系 / 同步状态（目录显示里面有几个） |
+| `src/components/ModeSwitch.tsx` | 左栏顶上的**「书写 / 阅读」分段控件** —— 两边共占同一块主区，得有一眼能看出"现在在哪儿"的东西；选中态跟 store 的 `side` 走 |
+| `src/components/BooksPane.tsx` | 左栏的**书架**。读书时也一直是书架（不再换成目录）—— 当前在读那本写着「正在读」，读着就能翻下一本 |
+| `src/components/BookAside.tsx` | 阅读时**右栏**那一份：**目录** + **笔记（这本书的批注）**。读书时整个换掉笔记那套（大纲 / 关系 / 待建），因为它们跟眼前这本书没关系 |
+| `src/components/BookPane.tsx` | 阅读器（懒加载）：连续滚动、目录跳转、书内搜索 + 高亮、字号 / 行距 / 三种背景、记住读到哪、**划词工具条与批注底色**。章节**消毒后**进自己的容器（不用 iframe，见它头上注释） |
+| `src/components/` | 顶栏（含移动端抽屉开关） / **左下角 dock（刷新差异 + 设置）** / 文件树（一键建笔记 + 目录选中、右键菜单、就地改名、拖动搬家、导入 md、标签筛选） / 编辑器 / **格式工具栏** / 差异列表 / **状态栏（同步小钮 + 字号 A± + 右栏开关）** / 图标集 |
 | `src/main.tsx` | 入口。DEV 下把 store 挂到 `window.__suisui`；**只在 PROD 注册 Service Worker** |
 | `public/manifest.webmanifest` | PWA 清单（standalone / 图标 / 语言） |
 | `public/sw.js` | 离线外壳：导航 network-first，静态资源 SWR，跨域一律放行 |
@@ -450,45 +607,64 @@ SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整�
 
 ## 界面约定
 
-一套「暖纸 + 墨 + 一枚黄铜」的视觉。台面（`desk`）是带极淡纸纹的暖灰底，
-正文是摊在台面上的一张白纸（`sheet`，圆角 + 落影 + hairline，手机上退化为满屏）。
+一套**纯黑白灰**的视觉 —— 配色只走明度，不走色相。台面（`desk`）是一块纯灰，
+正文是摊在台面上的一张纯白纸（`sheet`，圆角 + 落影，手机上退化为满屏）。
+层次靠**灰色阴影**和明度差，不靠边框、不靠颜色。
 令牌全在 `src/styles.css` 的 `@theme` / `:root` 里，组件里**只用语义名**
 （`bg-surface` / `text-ink-2` / `border-line` / `shadow-pop`…），不写裸 hex、不写裸阴影。
 
 | 令牌 | 用途 |
 | --- | --- |
-| `paper` → `surface` → `surface-2` → `surface-3` | 台面 → 纸面 → 工具架/次级块 → 悬停 |
-| `ink` / `ink-2` / `ink-3` | 三级文字 |
-| `accent`（钢蓝） | 主按钮、当前选中、待拉取 |
-| `craft`（黄铜） | 稿纸专属：稿纸图标、稿纸徽标 —— 「这张纸是你自己排的」的记号 |
-| `ok` / `warn` / `danger` | 待推送 / 有未同步改动 / 冲突与错误 |
+| `paper` → `surface` → `surface-2` → `surface-3` | 台面 → 纸面 → 工具架/次级块 → 目录选中 |
+| `ink` / `ink-2` / `ink-3` | 三级文字（近黑 `#121212` / 中灰 / 浅灰） |
+| `accent`（**纯黑**） | 主按钮、链接、焦点环、当前选中、待拉取 —— 靠「比正文更黑」强调，不靠有色 |
+| `craft`（中灰） | 标签那一套：正文里的 `#tag` 装饰、反向链接的标签块、标签筛选条、PDF 徽标 —— 「这一类东西」的记号 |
+| `ok` / `warn` / `danger` | 灰阶化的三级状态：深灰 / 中灰 / 最黑。语义改由**明度阶梯 + 图标**承担 |
 | `shadow-xs/sm/md/lg/pop/sheet` | 五级阴影，各对应一种语义（贴面控件 / 手里按钮 / 浮纸 / 压正文卡片 / 弹层 / 摊开的纸），**别跳级用** |
 | `font-serif` | 只给"名字"：应用名、正文 h1/h2、空态主句。小字号（<14px）一律不用衬线 —— 中文衬线小字会点阵化发虚 |
 
-- 编辑器外壳统一走 `src/components/EditorShell.tsx`（路径栏面包屑 + 模式开关 + 纸面）。
-  md 和稿纸共用一套，**别再在各自的 Pane 里手写路径栏** —— 那正是之前两边漂移的原因。
+两条由「纯黑白」直接逼出来的规矩，动样式时别踩：
+
+- **链接必须自带下划线。** `accent` 是纯黑、正文是 `#121212`，两者几乎同色 ——
+  颜色不再是链接的分辨记号，下划线才是。所以 `a` 的 `text-decoration` 是显式写死的，
+  不是继承来的（正文里 `.milkdown-wrap … a` 那一份，预览 / 阅读器各有一份同款）。
+- **黑底按钮的 hover 不能用 `brightness()`。** 近黑乘 1.06 还是近黑，等于没有反馈；
+  统一改成 `hover:opacity-90`（黑底透出后面的浅灰），`.btn-primary:hover` 再叠一圈灰光晕。
+
+- 编辑器外壳统一走 `src/components/EditorShell.tsx`（抬头条：图标 + 徽标 + 模式开关 + 纸面）。
+  **别再在各自的 Pane 里手写抬头栏** —— 那正是之前两边漂移的原因。
   它必须留在主包里（EmptyState 的骨架也用它），所以它一个编辑器依赖都不能 import。
+  ⚠️ 路径**不画在这里** —— 顶栏中间的面包屑是路径的唯一显示位，画第二遍就是两处要一起维护。
 - 图标统一走 `src/components/icons.tsx`（16 格、`currentColor`、1.5 描边），不用 `●`、`×` 这类字符当图标。
 - **正文测量宽度 = 46rem 居中**（`.editor-sheet`）。改这个宽度时，工具栏和提示条的
   `max-w-[46rem] px-6` 要一起改，否则左边界会错开。
 - Milkdown 通过 `--crepe-color-*` / `--crepe-font-*` 映射到上面这套令牌（见 `.milkdown-wrap`），换主题只改一处。
-- 关键控件保留 `data-*` 钩子（`data-sync` / `data-refresh` / `data-new` / `data-file` / `data-toggle-all`
-  / `data-new-note` / `data-note-kind` / `data-note-title` / `data-note-dir` / `data-note-submit` / `data-delete-confirm`
+- 关键控件保留 `data-*` 钩子（`data-sync` / `data-refresh` / `data-file` / `data-toggle-all`
+  / `data-new-note` / `data-more`（「⋯」菜单，菜单项 `data-ctx-item="tools-attach|tools-import"`）
+  / `data-new-note-target` / `data-dir-selected` / `data-delete-confirm`
   / `data-delete-ok` / `data-mode` / `data-md-toolbar` / `data-md="<工具id>"` / `data-md-link-pop`
   / `data-md-link-input` / `data-md-link-apply` / `data-source`
-  / `data-rich-toolbar` / `data-rich="<命令>"` / `data-rich-pop` / `data-rich-swatch` / `data-rich-opt`
-  / `data-rich-mode` / `data-rich-preset` / `data-rich-css` / `data-rich-css-panel` / `data-rich-doc`
-  / `data-rich-source` / `data-rich-style`
   / `data-drawer` / `data-drawer-toggle` / `data-drawer-mask`
-  / `data-dock` / `data-sync-count` / `data-cred-dot` / `data-sync-now` / `data-token`
-  / `data-settings` / `data-settings-panel` / `data-settings-mask` / `data-settings-close` / `data-toggle="showall"`
+  / `data-dock` / `data-sync`（**在底部状态栏上**） / `data-sync-count` / `data-cred-dot` / `data-sync-now` / `data-token`
+  / `data-editor-font-minus` / `data-editor-font-plus`（状态栏调编辑器字号的一对）
+  / `data-resizer="left|right"`（两侧边栏的分隔条，拖动中带 `data-dragging`）
+  / `data-settings` / `data-settings-panel` / `data-settings-mask` / `data-settings-close`
+  / `data-settings-nav` / `data-settings-nav-item="<节>"` / `data-settings-body`
+  / `data-reader-fonts` / `data-reader-themes` / `data-reader-preview`
+  / `data-book-skin` / `data-book-skin-panel` / `data-book-skin-close` / `data-book-skin-more`
+  / `data-book-font-plus` / `data-book-font-minus` / `data-book-line`
+  / `data-book-font-btn="<字体>"` / `data-book-theme-btn="<纸色>"` / `data-set-*`（设置里那份排版控件，同名）
+  / `data-toggle="showall"`
   / `data-provider="<后端>"` / `data-dav-url` / `data-dav-user` / `data-dav-pass` / `data-dav-warn` / `data-od-token` / `data-od-base`
   / `data-new-folder` / `data-folder-name` / `data-folder-submit` / `data-dir="<目录>"` / `data-dir-del="<目录>"`
   / `data-folder-del-confirm` / `data-folder-del-ok` / `data-folder-del-cancel`
   / `data-wiki`（装饰 span，带 `data-heading`） / `data-tag` / `data-wiki-hints` / `data-wiki-hint="<序号>"` / `data-wiki-kind`
   / `data-backlinks` / `data-backlink-tag` / `data-backlink-from` / `data-backlink-create`
   / `data-tag-filter` / `data-tag-clear` / `data-tag-empty`
-  / `data-attach` / `data-attach-input` / `data-attach-error`
+  / `data-attach-input` / `data-attach-error`（附件入口的按钮在「⋯」菜单里，input 仍在 DOM）
+  / `data-import-input` / `data-import-dropzone`（带 `data-import-dragover`；导入入口的按钮同上）
+  / `data-topbar`（全应用唯一的顶栏）/ `data-topbar-path`（中间的面包屑，目录段 `data-crumb` 可点）
+  / `data-left-toggle` / `data-right-toggle`（顶栏右侧两颗收栏开关，带 `data-on`；手机上不渲染）
   / `data-preview`（值为 image / pdf）/ `data-preview-img` / `data-preview-size` / `data-download`
   / `data-zoom-in` / `data-zoom-out` / `data-zoom-fit` / `data-zoom`
   / `data-pdf` / `data-pdf-canvas` / `data-page` / `data-page-prev` / `data-page-next`
@@ -505,12 +681,7 @@ SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整�
 - 左侧过滤规则全在 `src/lib/visible.ts`：点开头的任意路径段、程序类后缀、`scripts`/`src`/`tests`/`assets`
   等目录、根目录的 README/License。想放开某个目录，改那个文件的 `PROGRAM_DIR` 集合即可。
   它**不是安全边界**，只是「眼不见为净」；被藏起来的文件在本地照常持有、照常同步。
-  ⚠️ **`.rich` 刻意不在名单里** —— 稿纸文件要出现在左侧（当初就是为此没用 `.html` 当后缀）。
 - 判断「看起来没对齐」这类视觉问题时，用 `getBoundingClientRect()` 量，别靠看截图 —— 截图缩放会骗眼睛。
-- **稿纸的默认排版写在 `styles.css` 的 `@layer base` 块里**，锚点是 `.rich-scope`（= 正文容器，
-  也是 `@scope` 的锚点）。想加默认样式加在那个块里；**想让它可被用户覆盖，就别搬出这个图层**（坑 7）。
-  `.rich-scope` 在编辑态就是那个 contenteditable，所以默认排版和用户样式看到的是同一个盒子，
-  不存在"编辑时和导出后长得不一样"。
 - **移动端断点只有 `48rem` 一个**（对齐 Tailwind 的 `md`，别另外写 `768px`）。
   分界线是：**会改变定位 / 滚动行为的规则写进 `styles.css` 那个 `@media (width < 48rem)` 块**
   （抽屉、工具栏横滚、触摸尺寸、弹层贴边、安全区），**间距字号这类微调就地写 `max-md:` 变体**。
@@ -518,3 +689,10 @@ SW 和 HTTP 缓存的隔离边界都是 origin，换端口就等于换了一整�
   那个块里用的是 `[data-*]` 钩子，和 e2e 同一批，不额外发明类名。
 - **做旧式响应式时先量 `getBoundingClientRect()`，别信截图。** 这轮的两个真 bug 都是这么抓到的：
   遮罩"点不着"（其实点在了盖住屏幕中央的抽屉上）、弹层偏出半屏（Tailwind v4 的 `translate` 属性，坑 9）。
+- **绝对定位的浮层，坐标系一定要对着它自己那一层的容器量。** 批注底色第一版就偏了 57px：
+  量的时候拿的是滚动容器的 `getBoundingClientRect()`，而浮层长在正文外面那层
+  `relative` 容器里 —— 两者左上角不是同一个点。修法很土但是对的：**谁装它就量谁**
+  （`measureNotes(notes, frameRef.current)`）。测试里有一条"底色压住了字，不多不少"盯着它。
+- **`dist/assets` 攒到 50 个以上文件时 `vite build` 会直接失败**：批量删除保护把 vite 的
+  `emptyDir` 也拦了，而报出来的是一长串 rolldown 内部栈，完全不提"目录删不掉"。
+  构建前手动把 `dist` 递归清一遍（见上一节「打包」）。

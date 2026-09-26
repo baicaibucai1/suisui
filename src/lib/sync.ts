@@ -104,7 +104,7 @@ function conflictPath(path: string, taken: Set<string>): string {
 function commitMessage(paths: string[]): string {
   const names = paths.slice(0, 4).map((p) => p.split('/').pop());
   const n = paths.length;
-  return `碎碎：${n > 4 ? `${names.join('、')} 等 ${n} 个文件` : names.join('、')}`;
+  return `QuitWriteRead：${n > 4 ? `${names.join('、')} 等 ${n} 个文件` : names.join('、')}`;
 }
 
 /** 执行一轮同步：先拉、后冲突留副本、最后推；结束时把快照对齐到远端真值。 */

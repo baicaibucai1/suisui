@@ -3,7 +3,7 @@
  *   node tests/links.test.mjs
  *
  * ⚠️ **别在这里 import 任何东西**（理由同 note.ts）：单测是拿 Node 直接跑 .ts 的，
- * Node 的 ESM 不做后缀补全，`from './rich'` 会当场找不到模块。
+ * Node 的 ESM 不做后缀补全，`from './note'` 会当场找不到模块。
  *
  * 三条定死的规则：
  *
@@ -311,15 +311,24 @@ export function missingNotes(
   return out.sort((a, b) => b.from.length - a.from.length || a.target.localeCompare(b.target, 'zh'));
 }
 
+/**
+ * 指向这篇的所有写法，小写去重：全路径 → 去后缀 → 文件名 → 标题。
+ *
+ * 这跟 `resolveWiki` 那三档是**同一套**放宽顺序，一处放宽、一处收窄，
+ * 中间任何一处对不上就会出现"能跳过去、但反链里看不见"这种半条命的状态。
+ * 反向链接（谁引用了它）和改名联动（哪些链接要跟着改）都吃这一份，
+ * 所以它是导出的 —— 改名要按它来判断"这条链接指着的是不是刚改名的那篇"。
+ */
+export function aliasesOf(path: string): string[] {
+  return [...new Set([path, stripExt(path), noteNameOf(path), titleOf(path)].map((s) => s.toLowerCase()))];
+}
+
 /** 谁引用了这篇 —— 反向链接。同一篇里引了多次只算一条，但次数带着。 */
 export function backlinksOf(
   files: Record<string, string>,
   path: string,
 ): { from: string; hits: WikiLink[] }[] {
-  // 三种写法都算指向它：全路径、文件名、去掉日期前缀的标题
-  const names = new Set<string>(
-    [path, stripExt(path), noteNameOf(path), titleOf(path)].map((s) => s.toLowerCase()),
-  );
+  const names = new Set(aliasesOf(path));
   const out: { from: string; hits: WikiLink[] }[] = [];
   for (const [from, text] of Object.entries(files)) {
     if (from === path) continue;
@@ -442,4 +451,161 @@ export function lineOffset(lines: string[], line: number): number {
   let off = 0;
   for (let i = 0; i < line; i++) off += lines[i].length + 1;
   return off;
+}
+
+/*
+ * ------------------------------------------------------------ 改名时的正文联动
+ *
+ * 改名是唯一一种**会动到别的文件**的本地操作（删一篇就只删它自己）。所以这里有两条：
+ * 一条把引向它的链接改掉，一条把这篇自己的标题改掉。两条都只管**正文的一小片**，
+ * 别处一个字不碰 —— 用户没让改的东西不能顺手改。
+ */
+
+const firstIdx = (hay: string, needles: string[], fallback: number): number => {
+  let cut = fallback;
+  for (const n of needles) {
+    const i = hay.indexOf(n);
+    if (i >= 0 && i < cut) cut = i;
+  }
+  return cut;
+};
+
+/**
+ * 把指向「旧名」的双链改成「新名」（`[[旧]]` → `[[新]]`，`![[旧]]` 同理）。
+ *
+ * 几个不肯省的细节：
+ *   - **`#小节` 和 `|显示` 都留着。** 只换目标那一段 —— `[[旧#第三节|那段话]]`
+ *     改完必须是 `[[新#第三节|那段话]]`，前者是跳到哪、后者是显示成什么，都不该动。
+ *   - **`aliases` 而不是一个名字。** 同一篇有可能被写成 `[[旧名]]`、`[[旧名.md]]`、
+ *     或全路径，三种都得改；这份别名表就是 `resolveWiki` 那三档（见 aliasesOf）。
+ *   - **代码块里的不动。** 示例、模板里的 `[[xxx]]` 只是字。靠 stripCode
+ *     （长度不变）拿到位置，再切原文 —— 所以替换后原文里那串字才真的换了。
+ *
+ * 返回改了**几处**：界面要拿它说"3 处引用跟着改了"。一处都没有就原样返回。
+ */
+export function retargetLinks(
+  text: string,
+  aliases: readonly string[],
+  newName: string,
+): { text: string; count: number } {
+  const name = newName.trim();
+  if (!text || !name || aliases.length === 0) return { text, count: 0 };
+  const set = new Set(aliases.map((a) => a.toLowerCase()));
+  // 一律换成**裸新名**：`[[notes/随手]]` 改完是 `[[随笔]]`。单篇改名够用了。
+  const spans = findRetargetSpans(text, (c) => (set.has(c.toLowerCase()) ? name : null), false);
+  return { text: applySpans(text, spans), count: spans.length };
+}
+
+/*
+ * 一次搬家（from → to）对应的「写法改写表」。
+ *
+ * 跟 `retargetLinks` 的区别在**保形**：那版不管链接原来怎么写，一律换成新的裸名；
+ * 这版按原写法各归各位 ——
+ *
+ *   `[[a/旧.md]]` → `[[b/新.md]]`     全路径
+ *   `[[a/旧]]`    → `[[b/新]]`        路径去后缀
+ *   `[[旧]]`      → `[[新]]`          文件名 / 标题
+ *
+ * 保形是**目录**改名和**搬家**的刚需：人写了 `[[读书/2026/笔记]]` 这种带路径的链接，
+ * 目录一改，旧版会把它压成 `[[笔记]]`（还能跳，但人家写的路径没了），
+ * 搬家那档更糟 —— 名字没变，旧版压根不认这条链接要改，直接断。
+ *
+ * 键一律小写（跟 resolveWiki 那套一致），值保留目标路径本来大小写。
+ */
+export function retargetMap(from: string, to: string): Map<string, string> {
+  const out = new Map<string, string>();
+  // 与 aliasesOf 同源的四档，顺序即优先级（后写的覆盖先写的）
+  const keys = [from, stripExt(from), noteNameOf(from), titleOf(from)];
+  const vals = [to, stripExt(to), noteNameOf(to), titleOf(to)];
+  keys.forEach((k, i) => {
+    if (k) out.set(k.toLowerCase(), vals[i]);
+  });
+  return out;
+}
+
+/**
+ * 按改写表改双链。表里没有的写法不动；**新旧一样的不算改**（否则"搬了个家"
+ * 会被报成"若干处引用跟着改了"，那数字是给用户看的，不能虚报）。
+ */
+export function retargetLinksMap(
+  text: string,
+  map: ReadonlyMap<string, string>,
+): { text: string; count: number } {
+  if (!text || !map || map.size === 0) return { text, count: 0 };
+  const spans = findRetargetSpans(text, (c) => map.get(c.toLowerCase()) ?? null, true);
+  return { text: applySpans(text, spans), count: spans.length };
+}
+
+type RetargetSpan = { from: number; to: number; rep: string };
+
+/**
+ * 扫一遍文本，把"该改的目标"记成一段段位置。
+ * 位置全部按**原文**算 —— 代码块里的 `[[ ]]` 得靠 stripCode（长度不变）认出来再跳过。
+ * `skipSame`：新旧写法相同的位置要不要算进去。
+ */
+function findRetargetSpans(
+  text: string,
+  lookup: (core: string) => string | null,
+  skipSame: boolean,
+): RetargetSpan[] {
+  const src = text.includes('`') ? stripCode(text) : text;
+  const spans: RetargetSpan[] = [];
+
+  const scan = (re: RegExp, bang: number) => {
+    for (const m of src.matchAll(re)) {
+      const at = m.index ?? 0;
+      // `![[图]]` 里那截 `[[图]]` 也符合链接的样子，但它前面有叹号 —— 那条走 EMBED 那条路
+      if (bang === 0 && at > 0 && src[at - 1] === '!') continue;
+      const inner = m[1];
+      // 目标那一段的**原文**（可能带首尾空格）。`|` 和 `#` 谁先出现谁截断，与 splitWiki 同序
+      const cut = firstIdx(inner, ['|', '#'], inner.length);
+      const rawTarget = inner.slice(0, cut);
+      const core = rawTarget.trim();
+      if (!core) continue;
+      const rep = lookup(core);
+      if (!rep) continue;
+      if (skipSame && rep.toLowerCase() === core.toLowerCase()) continue;
+      const lead = rawTarget.length - rawTarget.trimStart().length;
+      const from = at + bang + 2 + lead;
+      spans.push({ from, to: from + core.length, rep });
+    }
+  };
+  scan(WIKI_RE, 0);
+  scan(EMBED_RE, 1);
+  return spans;
+}
+
+function applySpans(text: string, spans: RetargetSpan[]): string {
+  if (spans.length === 0) return text;
+  spans.sort((a, b) => a.from - b.from);
+  let out = '';
+  let cursor = 0;
+  for (const s of spans) {
+    out += text.slice(cursor, s.from) + s.rep;
+    cursor = s.to;
+  }
+  return out + text.slice(cursor);
+}
+
+/**
+ * 改文件名时，正文第一行的标题跟着改（`# 旧标题` → `# 新标题`）。
+ *
+ * 两条都收紧，是为了**宁可不改也不改错**：
+ *   - 只看**第一行**。正文中段那个同名标题是内容的一部分，不是"这篇的标题"。
+ *   - 只改**一级**标题，而且文字要跟旧标题**逐字相同**。人自己另起的小标题
+ *     （`# 我的碎念` 而文件名是 `2026-09-21-随手.md`）跟文件名本来就不一致，
+ *     改名时去动它就是把他的东西改没了。
+ */
+export function retitleBody(
+  text: string,
+  oldTitle: string,
+  newTitle: string,
+): { text: string; changed: boolean } {
+  if (!text || !oldTitle || !newTitle || oldTitle === newTitle) return { text, changed: false };
+  const lines = (text.includes('```') ? stripCode(text) : text).split('\n');
+  const h = lines[0]?.match(HEAD_RE);
+  if (!h) return { text, changed: false };
+  if (h[1].length !== 1 || cleanHeading(h[2]) !== oldTitle) return { text, changed: false };
+  lines[0] = `# ${newTitle}`;
+  return { text: lines.join('\n'), changed: true };
 }

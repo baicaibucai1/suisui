@@ -50,7 +50,6 @@ eq('pdf 不是图片', isImagePath('a.pdf'), false);
 eq('pdf 是 pdf', isPdfPath('a.pdf'), true);
 eq('png 不是 pdf', isPdfPath('a.png'), false);
 eq('md 不是附件', isBinaryPath('a.md'), false);
-eq('稿纸不是附件', isBinaryPath('a.rich'), false);
 eq('png 是附件', isBinaryPath('x/y/a.png'), true);
 eq('pdf 是附件', isBinaryPath('x/y/a.pdf'), true);
 eq('MIME：png', mimeOf('a.png'), 'image/png');

@@ -26,7 +26,6 @@ const { chromium } = createRequire('C:/AI_Production/QQbot/')('playwright');
 const DEV = 'http://localhost:5183';
 const PREVIEW = process.env.DEMO_URL ?? 'http://localhost:5184';
 const ROOT = 'C:/AI_Production/suisui-app';
-const PERSIST_KEY = 'suisui.demo.v1';
 
 let pass = 0;
 const bad = [];
@@ -59,12 +58,11 @@ async function seed(page, url) {
     await page.waitForTimeout(500);
     return;
   }
-  await page.evaluate(
-    ([key, files]) => {
-      localStorage.setItem(key, JSON.stringify({ state: { files, snapshot: {}, current: null, lastSyncAt: '', showAll: false }, version: 0 }));
-    },
-    [PERSIST_KEY, FILES],
-  );
+  await page.evaluate((files) => {
+    // ⚠️ 笔记的真身现在是**仓库**（浏览器里 = localStorage 那个暂存键）——
+    // 往 persist 那份里塞 files 已经没用了：它不再从那儿恢复（仓库才是唯一真相）。
+    localStorage.setItem('suisui.repo.memory.v1', JSON.stringify(files));
+  }, FILES);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-sync]', { timeout: 15000 });
   await page.waitForTimeout(400);
@@ -159,8 +157,13 @@ step(`加载中给骨架（开发服务器 ${DEV}）`);
   ok('加载中出现了骨架', shown);
   if (shown) {
     const txt = await page.locator('[data-editor-loading]').innerText();
-    ok('骨架里报出了路径', txt.includes(MD), txt.replace(/\n/g, ' '));
     ok('骨架里写明了在打开编辑器', /正在打开编辑器/.test(txt));
+    /*
+     * 路径**不在骨架里报了**（骨架重做那轮挪走的）：顶栏中间那条面包屑就是它，
+     * 骨架再画一遍是同一个事实说两次。这里改钉顶栏 —— 骨架转圈的这一两秒里，
+     * 人得能在顶栏看到"正在打开的是谁"，不然就是点了没反应。
+     */
+    ok('顶栏报出了路径', (await page.textContent('[data-topbar-path]'))?.includes(MD.split('/').pop() ?? ''), '');
   }
   await page.waitForSelector('.milkdown', { timeout: 20000 });
   ok('包到了之后编辑器正常挂上', (await page.locator('.milkdown').count()) > 0);

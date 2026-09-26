@@ -1,14 +1,26 @@
 import { useStore } from '../lib/store';
 import { isProgramArtifact } from '../lib/visible';
-import { Menu } from './icons';
+import { Minus, Menu, Plus } from './icons';
 
 /*
- * 底部状态栏：**现在什么状况**，外加手机上打开文件列表的把手。
+ * 底部状态栏：**现在什么状况**（外加两个全局的小扳手）。
  *
- * 顶栏整条拿掉之后，这行就剩两件事：
+ * ⚠️ **这条栏只报状况，不给同步按钮**。
+ * 同步那颗在左栏底上的 dock 里，挨着设置（2026-09-26 用户要求挪过去的）。
+ * ⛔ 同一时刻全应用只能有一颗「同步」 —— 这边再留一颗，人就不知道该点哪个。
+ * 状况（未同步 / 同步于 … / 出错 / 通信中）照旧在这条栏上：
+ * 它说的是"现在什么状况"，跟按钮在哪儿是两件事。
+ *
+ * 这行剩下的：
  *   ① 状态点 + 一句话（出错 / 通信中 / 未同步 / 就绪）—— 全屏宽度里最不打扰的一行；
  *   ② 手机上的 ☰。它必须在**抽屉外面**：左栏在窄屏是浮上来的抽屉，
- *      把手要是也放进抽屉里，抽屉一关就再也叫不出来了。
+ *      把手要是也放进抽屉里，抽屉一关就再也叫不出来了；
+ *   ③ ~~桌面上的「右栏」开关~~ —— **已经搬到顶栏去了**（见 TopBar）。两栏的收起
+ *      现在都由顶栏右侧那两颗管，那两颗在栏收起之后照样在；状态栏这边不再有第二颗。
+ *   ④ 桌面上还有一对 A− / A+：调的是**写笔记界面**的字号（见 store 的 editorFont）。
+ *      放这儿是因为它也是全局的 —— 改一次，整个编辑器（正文、标题、列表）一起变，
+ *      不属于某一篇笔记；而"眼睛突然吃力"的时刻人在哪儿都在，这条栏永远够得着。
+ *   ⑤ 文件数 / 凭据 / 同步时间这几个数（桌面才有地方摆）。
  */
 
 export default function StatusBar() {
@@ -23,6 +35,8 @@ export default function StatusBar() {
   const current = useStore((s) => s.current);
   const drawer = useStore((s) => s.drawer);
   const setDrawer = useStore((s) => s.setDrawer);
+  const editorFont = useStore((s) => s.editorFont);
+  const setEditorFont = useStore((s) => s.setEditorFont);
 
   // 日志自带 ✔ 前缀，状态点已经表达了"成功"，这里去掉避免重复
   const tail = (log.slice(-1)[0] ?? '').replace(/^✔\s*/, '');
@@ -70,6 +84,44 @@ export default function StatusBar() {
       <span className={`min-w-0 flex-1 truncate ${error ? 'text-danger' : 'text-ink-3'}`}>
         {message}
       </span>
+
+      {/*
+        编辑器字号。±1px，夹在 12–24（夹紧在 store 那头做）。
+        值本身不显示在条上 —— 悬停 title 里有，界面少一个总在变的数字；
+        改了立刻生效（正文、标题、列表一起变，全走一个 CSS 变量），设置里记着。
+      */}
+      <span className="hidden shrink-0 items-center gap-px max-md:hidden md:flex" data-editor-font>
+        <button
+          data-editor-font-minus
+          onClick={() => setEditorFont(editorFont - 1)}
+          disabled={editorFont <= 12}
+          aria-label="缩小编辑器字号"
+          title={`编辑器字号（当前 ${editorFont}px，最小 12）`}
+          className="grid h-6 w-6 place-items-center rounded-[7px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-35 disabled:pointer-events-none"
+        >
+          <Minus size={12} />
+        </button>
+        <button
+          data-editor-font-plus
+          onClick={() => setEditorFont(editorFont + 1)}
+          disabled={editorFont >= 24}
+          aria-label="放大编辑器字号"
+          title={`编辑器字号（当前 ${editorFont}px，最大 24）`}
+          className="grid h-6 w-6 place-items-center rounded-[7px] text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-35 disabled:pointer-events-none"
+        >
+          <Plus size={12} />
+        </button>
+      </span>
+
+      {/*
+        ⚠️ 「右栏」那颗开关**已经搬走了** —— 现在在顶栏右侧（见 TopBar），
+        和左栏那颗并排。原先它待在状态栏是因为"收起右栏的按钮长在右栏自己头上，
+        栏一收起就没了"；现在开关长在顶栏上，栏收不收它都在，这儿就不必再来一颗 ——
+        同一个动作两个入口，人只会不知道该点哪个。
+
+        ⚠️ **「同步」那颗同样搬走了** —— 现在在左栏底上的 dock 里（见 SideDock），
+        挨着设置。同一条理由：全应用只能有一颗同步，它现在跟着"待同步清单"走。
+      */}
 
       {/* 下面这几个都是桌面才有地方摆的细节；手机上留状态点和消息就够 */}
       <span className="flex shrink-0 items-center gap-3 text-ink-3 max-md:hidden">

@@ -30,15 +30,13 @@ import { escapeHtml, loadMdRenderer, mdRendererReady, mdToHtml } from '../lib/md
 import { flashNode, flashPlugin, insertWiki, refreshWiki, wikiLinkPlugin } from '../lib/pm-links';
 import type { EmbedInfo } from '../lib/pm-links';
 import type { WikiQuery } from '../lib/pm-links';
-import { isRichPath } from '../lib/rich';
 import { useMedia, WIDE } from '../lib/media';
 import WikiHints from './WikiHints';
 import type { HintItem } from './WikiHints';
 import BacklinkPane from './BacklinkPane';
 import MdToolbar from './MdToolbar';
-import RichPane from './RichPane';
 import { Badge, EditorShell, ModeSwitch, SheetBody } from './EditorShell';
-import { Alert, FileText } from './icons';
+import { FileText } from './icons';
 
 type Mode = 'wysiwyg' | 'source';
 
@@ -178,12 +176,8 @@ export default function EditorPane() {
 
   const content = current ? (files[current] ?? '') : '';
   const isMd = current ? current.toLowerCase().endsWith('.md') : false;
-  // 稿纸是另一套编辑器（contenteditable，非受控），下面这些 md 的逻辑对它全部不适用
-  const isRich = current ? isRichPath(current) : false;
-  // 所见即所得把裸 HTML / HTML 注释当纯文本，保存会把标记改坏 —— 这类文件提示走源码模式
-  const hasRawHtml = isMd && /<!--|<[a-z][a-z0-9]*(\s|\/?>)/i.test(content);
 
-  /** 能当链接目标的只有 md 笔记（稿纸不是 markdown，链过去也没法解析） */
+  /** 能当链接目标的只有 md 笔记（别的格式不是 markdown，链过去也没法解析） */
   const mdPaths = useMemo(() => Object.keys(files).filter((p) => p.toLowerCase().endsWith('.md')), [files]);
   // 渲染时顺手刷新：插件读的是这两个 ref，不是渲染闭包里的旧值
   pathsRef.current = mdPaths;
@@ -851,10 +845,6 @@ export default function EditorPane() {
    */
   if (!current) return null;
 
-  // 稿纸整个交给 RichPane —— 上面那些 hook 对它都是空转（isMd 为 false，会提前 return），
-  // 但必须挂在 hook 之后，不能条件性地少跑几个 hook
-  if (isRich) return <RichPane key={current} path={current} />;
-
   return (
     <EditorShell
       path={current}
@@ -887,24 +877,6 @@ export default function EditorPane() {
       }
     >
       {isMd && <MdToolbar active={snap.active} onRun={runTool} currentHref={snap.href} />}
-
-      {hasRawHtml && mode === 'wysiwyg' && (
-        <div className="shrink-0 border-b border-warn-line bg-warn-soft py-2.5">
-          <div className="mx-auto flex max-w-[46rem] items-start gap-2.5 px-6">
-            <Alert size={14} className="mt-[3px] shrink-0 text-warn" />
-            <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-warn">
-              这篇含 HTML 标记（如 <code className="font-mono">{'<!-- 注释 -->'}</code>
-              ）。所见即所得会把它当纯文本，保存可能改坏它。
-            </p>
-            <button
-              onClick={() => setMode('source')}
-              className="shrink-0 rounded-[8px] border border-warn-line bg-surface px-2.5 py-[3px] text-[12px] text-warn transition-colors hover:bg-warn-soft"
-            >
-              切到源码
-            </button>
-          </div>
-        </div>
-      )}
 
       <SheetBody>
         {isMd && mode === 'wysiwyg' ? (

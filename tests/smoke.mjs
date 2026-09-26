@@ -59,7 +59,7 @@ await page.screenshot({ path: `${OUT}/03-synced.png` });
 
 step('左侧过滤：程序文件默认不显示');
 const hiddenTip = await page
-  .getByText(/已隐藏/)
+  .getByText(/已隐藏|隐藏 \d/)
   .first()
   .textContent()
   .catch(() => '(没有隐藏提示)');
@@ -67,15 +67,24 @@ console.log('隐藏提示:', (hiddenTip ?? '').replace(/\s+/g, ' ').trim());
 const filtered = await page.locator('[data-file]').count();
 await page.screenshot({ path: `${OUT}/07-filtered.png` });
 
-step('点眼睛：切到「显示全部」');
-await page.click('[data-toggle-all]');
-await page.waitForTimeout(600);
-const allCount = await page.locator('[data-file]').count();
-console.log(`可见文件数：过滤 ${filtered} → 全部 ${allCount}`);
-await page.screenshot({ path: `${OUT}/08-show-all.png` });
-await page.click('[data-toggle-all]');
-await page.waitForTimeout(500);
-console.log('切回过滤后:', await page.locator('[data-file]').count());
+step('点那枚「隐藏 N」小钮：切到「显示全部」');
+/*
+ * 开关在搜索框下面那行小字的右半（工具条收纳那轮搬的：眼睛不再占常驻位）。
+ * ⚠️ 小钮只在**库里真有程序文件**时才渲染 —— 没有可藏的东西就没有开关，
+ * 这条就整个跳过（原先那颗眼睛是常驻的，没有这个前提）。
+ */
+if ((await page.locator('[data-toggle-all]').count()) === 1) {
+  await page.click('[data-toggle-all]');
+  await page.waitForTimeout(600);
+  const allCount = await page.locator('[data-file]').count();
+  console.log(`可见文件数：过滤 ${filtered} → 全部 ${allCount}`);
+  await page.screenshot({ path: `${OUT}/08-show-all.png` });
+  await page.click('[data-toggle-all]');
+  await page.waitForTimeout(500);
+  console.log('切回过滤后:', await page.locator('[data-file]').count());
+} else {
+  console.log('（库里没有程序文件，没有这枚小钮，跳过）');
+}
 
 step('打开第一篇 md');
 const mdCount = await page.locator('[data-file$=".md"]').count();
@@ -116,62 +125,36 @@ if (await wys.count()) {
   await page.waitForTimeout(600);
 }
 
+/*
+ * 建笔记：左上加号，一键落库 —— 不问路径，也不打断你输标题。
+ * 这条套件要能在**断网空库**下跑完，所以这里不依赖任何已存在的目录：
+ * 没选目录时落点回退到 thoughts。「点选目录 → 落在该目录」在 folder-e2e 里单独测。
+ */
+step('建笔记：一键创建');
+const target = (((await page.textContent('[data-new-note-target]')) ?? '') + '').replace(/\s+/g, ' ').trim();
+console.log('  落点提示:', target);
+ok('没选目录时落点提示是 thoughts', target.includes('thoughts'), target);
+
 await page.click('[data-new-note]');
-await page.waitForTimeout(400);
-ok('表单已打开', (await page.locator('[data-note-form]').count()) === 1);
-ok(
-  '标题框自动聚焦',
-  await page.evaluate(() => document.activeElement?.hasAttribute('data-note-title') === true),
-);
-console.log('  空标题时的预览:', await page.textContent('[data-note-preview]'));
-
-// 中文输入法组字期间的回车是"选词"，不能当提交 —— 否则打拼音一选字就把笔记建了
-await page.evaluate(() => {
-  document
-    .querySelector('[data-note-title]')
-    ?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true }),
-    );
-});
-await page.waitForTimeout(500);
-ok('输入法组字中的回车不提交', (await page.locator('[data-note-form]').count()) === 1);
-console.log('  组字回车后，文件数:', await page.evaluate(() => Object.keys(window.__suisui.getState().files).length));
-
-await page.click('[data-note-dir="notes"]');
-await page.fill('[data-note-title]', '雨天 散步');
-await page.waitForTimeout(250);
-const preview = (await page.textContent('[data-note-preview]')) ?? '';
-console.log('  填了标题后的预览:', preview);
-ok('预览带目录/日期/标题', /^notes\/\d{4}-\d{2}-\d{2}-雨天-散步\.md$/.test(preview), preview);
-await page.screenshot({ path: `${OUT}/09-note-form.png` });
-
-await page.press('[data-note-title]', 'Enter');
 await page.waitForTimeout(2500);
 const made = await page.evaluate(() => {
   const st = window.__suisui.getState();
   const p = st.current ?? '';
   const el = document.querySelector(`[data-file="${p}"]`);
-  return {
-    path: p,
-    body: p ? (st.files[p] ?? null) : null,
-    listed: !!el,
-    dirty: st.dirty,
-    formClosed: !document.querySelector('[data-note-form]'),
-  };
+  return { path: p, body: p ? (st.files[p] ?? null) : null, listed: !!el, dirty: st.dirty };
 });
 console.log('  建出来的文件:', made.path);
 console.log('  初始正文:', JSON.stringify(made.body));
-ok('路径按预览落库', made.path === preview, made.path);
-ok('初始正文是 H1 标题', made.body === '# 雨天 散步\n\n', JSON.stringify(made.body));
+ok('没选目录时默认落在 thoughts/', /^thoughts\/\d{4}-\d{2}-\d{2}-未命名\.md$/.test(made.path), made.path);
+ok('初始正文是 H1「未命名」', made.body === '# 未命名\n\n', JSON.stringify(made.body));
 ok('已出现在左侧文件树', made.listed);
-ok('表单已收起', made.formClosed);
 ok('标记为有未同步改动', made.dirty);
 await page.waitForTimeout(1200);
 const inEditor = ((await page.locator('.milkdown').first().innerText().catch(() => '')) ?? '')
   .replace(/\s+/g, ' ')
   .trim();
 console.log('  编辑器里:', inEditor.slice(0, 60));
-ok('编辑器已打开这篇', inEditor.includes('雨天 散步'));
+ok('编辑器已打开这篇', inEditor.includes('未命名'));
 // 差异状况说在「待同步」那块的抬头里（dock 已经退回一行，只管动手）
 const barAfter = (await page.textContent('[data-changes]')).replace(/\s+/g, ' ').trim();
 console.log('  待同步区:', barAfter.slice(0, 80));
@@ -295,14 +278,12 @@ await page.click('[data-mode="wysiwyg"]');
 await page.waitForTimeout(800);
 
 step('创建笔记：重名不覆盖');
+// 再点一次加号：还是那个目录、还是「未命名」这个名字，必然撞名
 await page.click('[data-new-note]');
-await page.fill('[data-note-title]', '雨天 散步');
-await page.click('[data-note-dir="notes"]');
-await page.press('[data-note-title]', 'Enter');
 await page.waitForTimeout(1200);
 const second = await page.evaluate(() => window.__suisui.getState().current);
 console.log('  第二篇:', second);
-ok('重名自动加 -2', second === preview.replace(/\.md$/, '-2.md'), String(second));
+ok('重名自动加 -2', /^thoughts\/\d{4}-\d{2}-\d{2}-未命名-2\.md$/.test(String(second)), String(second));
 
 step('清理：把这两篇本地删掉（没推送，远端不受影响）');
 await page.evaluate(() => {
@@ -310,13 +291,13 @@ await page.evaluate(() => {
   // 于是这条断言在跨天之后莫名其妙变红（真踩过）。按标题片段匹配就行。
   const st = window.__suisui.getState();
   for (const p of Object.keys(st.files)) {
-    if (p.includes('雨天-散步')) st.removeFile(p);
+    if (p.includes('未命名')) st.removeFile(p);
   }
 });
 await page.waitForTimeout(600);
 const left = await page.evaluate(() => {
   const st = window.__suisui.getState();
-  return Object.keys(st.files).filter((p) => p.includes('雨天-散步'));
+  return Object.keys(st.files).filter((p) => p.includes('未命名'));
 });
 console.log('  残留:', left.length ? left.join(' | ') : '(无)');
 ok('两篇都已删除', left.length === 0);

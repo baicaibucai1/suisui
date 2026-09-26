@@ -1,36 +1,26 @@
 import type { ReactNode } from 'react';
 
 /*
- * 编辑器区的**外壳**：台面 → 一张纸 → 路径栏 → （工具栏、正文……）。
+ * 编辑器区的**外壳**：台面 → 一张纸 → 抬头条 → （工具栏、正文……）。
  *
- * 为什么单独拆一个文件：md（EditorPane）和稿纸（RichPane）的路径栏、模式开关、
- * 纸面留白曾经是两份各写各的 flex 树，改一处忘一处就漂了 —— 两边会长得越来越不像。
- * 现在这里只有一套，两个编辑器只是往里填不同的内容。
+ * 为什么单独拆一个文件：编辑器的抬头栏、模式开关、纸面留白曾经散在各自的 Pane 里，
+ * 改一处忘一处就漂了。现在这里只有一套，往里填内容的那几处只管内容。
  *
  * 三条约束，改之前先看一眼：
  *
  * 1. **本文件必须留在主包里。** 它只 import 图标和类型，不带任何编辑器依赖；
- *    `EmptyState.tsx` 的加载骨架也用它，所以它一旦 import 了 EditorPane / RichPane，
+ *    `EmptyState.tsx` 的加载骨架也用它，所以它一旦 import 了 EditorPane / PreviewPane,
  *    那 1.1MB 就会跟着首屏一起下来（`tests/lazy-e2e.mjs` 会当场红）。
  * 2. 桌面是"台面上的一张纸"（四周露出底色 + 圆角 + 落影），手机是满屏铺开。
  *    分界由 styles.css 的 `.sheet` 在 `width < 48rem` 里接管，别在这儿用 max-md: 叠一遍。
- * 3. 路径栏上的 `data-*` 一个都别动：`[data-mode]` / `[data-rich-mode]` 是 e2e 的抓手。
+ * 3. 抬头条上的 `data-*` 一个都别动：`[data-mode]` 是 e2e 的抓手。
+ *
+ * ⚠️ **路径不再画在这里**（骨架重做那轮挪走的）：顶栏中间就是当前文件的面包屑，
+ * 编辑器再画一遍是同一个事实说两次 —— 每屏白吃一条 44px 还让人怀疑两处会不会不一致。
+ * `path` prop 留着：给抬头当 `title`（悬停能看全路径），四个调用方也就不用跟着改。
  */
 
 type DataAttr = { [K in `data-${string}`]?: string };
-
-/** 路径拆成「目录 + 文件名」两截：目录退到背景里，文件名才是这一页的名字。 */
-export function PathCrumb({ path, className = '' }: { path: string; className?: string }) {
-  const i = path.lastIndexOf('/');
-  const dir = i < 0 ? '' : path.slice(0, i + 1);
-  const name = i < 0 ? path : path.slice(i + 1);
-  return (
-    <span className={`min-w-0 flex-1 truncate font-mono text-[12.5px] ${className}`} title={path}>
-      {dir && <span className="text-ink-3">{dir}</span>}
-      <span className="font-medium text-ink">{name}</span>
-    </span>
-  );
-}
 
 /**
  * 「所见即所得 / 源码」这种二选一的模式开关。
@@ -45,7 +35,7 @@ export function ModeSwitch<T extends string>({
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
-  /** 每个按钮挂哪个 data-* —— md 用 data-mode，稿纸用 data-rich-mode */
+  /** 每个按钮挂哪个 data-* —— md 编辑器的「所见即所得 / 源码」用 data-mode */
   attrFor: (v: T) => DataAttr;
 }) {
   return (
@@ -73,7 +63,7 @@ export function ModeSwitch<T extends string>({
   );
 }
 
-/** 路径栏右侧那种小徽标：MD / 稿纸 / 字数……同一个壳，换个色系。 */
+/** 抬头条右侧那种小徽标：MD / 字数……同一个壳，换个色系。 */
 export function Badge({
   tone = 'plain',
   children,
@@ -98,9 +88,10 @@ export function Badge({
 }
 
 type Props = {
+  /** 只当悬停提示用（顶栏已经有面包屑了，这里不再画第二遍） */
   path: string;
   icon: ReactNode;
-  /** 路径右边的小徽标（MD / 稿纸……） */
+  /** 抬头条右边的小徽标（MD……） */
   tag?: ReactNode;
   /** 紧挨着徽标的状态（脏标记、异常提示） */
   status?: ReactNode;
@@ -113,12 +104,14 @@ export function EditorShell({ path, icon, tag, status, actions, children, ...dat
   return (
     <div className="desk flex h-full min-h-0 flex-col md:px-4 md:py-4 lg:px-7 lg:py-6" {...data}>
       <div className="sheet flex h-full min-h-0 flex-col overflow-hidden rounded-none md:rounded-card">
-        <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-line bg-surface px-4 max-md:h-10 max-md:gap-2 max-md:px-3">
+        <div
+          className="flex h-11 shrink-0 items-center gap-2.5 border-b border-line bg-surface px-4 max-md:h-10 max-md:gap-2 max-md:px-3"
+          title={path}
+        >
           <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-surface-2 text-ink-3 max-md:hidden">
             {icon}
           </span>
           <span className="hidden shrink-0 text-ink-3 max-md:block">{icon}</span>
-          <PathCrumb path={path} />
           {tag}
           {status}
           {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}

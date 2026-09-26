@@ -5,7 +5,7 @@
     <!--
       viewport-fit=cover —— 刘海 / 圆角屏下用满整屏，配合 CSS 里的 env(safe-area-inset-*)
       interactive-widget=resizes-content —— 安卓 Chrome 上软键盘弹起时**压缩视口**而不是盖住正文，
-                                            否则稿纸/源码两种编辑模式的光标都会被键盘挡住
+                                            否则编辑区的光标会被软键盘挡住
       不锁 maximum-scale —— 放大是正当需求，锁掉就是无障碍问题
     -->
     <meta
@@ -15,19 +15,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!--
       color-scheme: light —— 这套配色只有浅色一套。不声明的话，手机处于深色模式时
-      浏览器会按 UA 默认给表单控件（token 输入框、稿纸的 CSS 文本域）套深色样式，
+      浏览器会按 UA 默认给表单控件（token 输入框之类的）套深色样式，
       跟周围的纸色撞在一起。声明了就锁死在浅色，和 theme-color 一致。
     -->
     <meta name="color-scheme" content="light" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="theme-color" content="#f5f3ef" />
+    <meta name="theme-color" content="#ebebeb" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="碎碎" />
+    <meta name="apple-mobile-web-app-title" content="QuitWriteRead" />
     <meta name="description" content="个人无关紧要的文字 —— 读写真实文件、同步 GitHub" />
-    <title>碎碎</title>
+    <title>QuitWriteRead</title>
   </head>
   <body>
     <div id="root"></div>

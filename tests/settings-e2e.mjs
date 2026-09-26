@@ -1,4 +1,4 @@
-// 设置面板的端到端。
+// 设置对话框的端到端。
 //
 //   node tests/settings-e2e.mjs                            # 默认打开发服务器 5183
 //   DEMO_URL=http://localhost:5184 node tests/settings-e2e.mjs
@@ -7,7 +7,8 @@
 //   ① 入口在左下角 —— 顶栏只说状况，动手的按钮沉在 dock 上
 //   ② 没做完的后端是 disabled + 标「待接入」，不是假按钮
 //   ③ 凭据跟着后端走（选谁配谁），且没配时齿轮上顶红点
-//   ④ 浮层能被 Esc 收掉（跟抽屉那条一致）
+//   ④ 对话框是居中的、独占一屏的：Esc / 点遮罩都收得掉，分节导航切得动
+//   ⑤ 「阅读」一节和阅读器共用同一份排版偏好（在这改，读的时候跟着变）
 //
 // ⚠️ 壁纸功能已经整块拿掉了（2026-09-21）。这里留一条负向断言：
 // 台面上不许再出现壁纸层，面板里也不许再有壁纸字样 —— 防止哪天又被塞回来。
@@ -64,19 +65,40 @@ ok(
 );
 
 /*
- * 入口位置：设置和同步都在**左下角那条 dock** 里。
- * 顶栏已经整条拿掉了 —— 状况（差异胶囊）和动作（刷新 / 同步 / 设置）都在 dock 上，
- * 这边守着，免得哪天有人图省事又把一条顶栏加回来。
+ * 入口位置：设置在**左下角那条 dock** 里，同步在底部状态栏上。
+ *
+ * ⚠️ 顶栏**回来了**（2026-09 那次骨架重做）：它现在管三件事 —— 书写 / 阅读的切换、
+ * 当前文件路径、左右两栏的收起。这边守的是"**只有一条**"：
+ * 顶栏的公信力来自唯一性，两条顶栏就没有"顶"了。
  */
-step('入口在左下角');
+/*
+ * 入口在左下角 —— 但**同步已经不在这儿了**。
+ * 同步是"整个库对外的动作"，现在收成小钮放在底部状态栏上（跟它报的状况同一条）；
+ * ⚠️ **同步又搬回 dock 了**（2026-09-26，用户要求"同步放在设置旁边"）：
+ * 三颗一行，顺序「刷新差异 → 同步 → 设置」。这段守三件事：
+ *   ① dock 就是三颗，别再多也别再少；
+ *   ② 同步**紧挨着**设置（中间不夹别的东西）；
+ *   ③ 全应用只有这一颗同步 —— 状态栏那颗已经撤了，不许再长回来。
+ */
+step('入口在左下角（同步在 dock，挨着设置）');
 {
-  ok('页面里没有顶栏了', (await page.locator('header').count()) === 0);
-  ok('刷新差异也在 dock 里', (await page.locator('[data-dock] [data-refresh]').count()) === 1);
+  ok('顶栏只有一条', (await page.locator('header').count()) === 1);
+  ok('刷新差异还在 dock 里', (await page.locator('[data-dock] [data-refresh]').count()) === 1);
 
   // dock 只管动手，状况并进了上面的「待同步」抬头 —— 一行装得下（两行那条试过，臃肿）
   const dockH = (await page.locator('[data-dock]').boundingBox()).height;
   ok('dock 只有一行', dockH <= 56, `高 ${dockH}px`);
-  ok('三颗按钮横排', (await page.locator('[data-dock] button').count()) === 3);
+  ok(
+    'dock 是三颗按钮（刷新差异 + 同步 + 设置）',
+    (await page.locator('[data-dock] button').count()) === 3,
+  );
+  ok('同步在 dock 里', (await page.locator('[data-dock] [data-sync]').count()) === 1);
+  ok(
+    '顺序是 刷新 → 同步 → 设置（同步紧挨着设置）',
+    (await page.locator('[data-dock] button').evaluateAll((els) =>
+      els.map((e) => e.dataset.refresh !== undefined ? 'refresh' : e.dataset.sync !== undefined ? 'sync' : e.dataset.settings !== undefined ? 'settings' : '?'),
+    )).join('>') === 'refresh>sync>settings',
+  );
 
   const aside = await page.locator('[data-drawer]').boundingBox();
   const dock = await page.locator('[data-dock]').boundingBox();
@@ -87,32 +109,89 @@ step('入口在左下角');
     `dock底=${dock ? dock.y + dock.height : '?'} aside底=${aside.y + aside.height}`,
   );
 
+  // 同步在 dock 里，跟设置同一行、同一个底
   const sync = await page.locator('[data-sync]').boundingBox();
-  const refresh = await page.locator('[data-refresh]').boundingBox();
+  ok('同步钮在这一列里（不在状态栏）', !!sync && !!aside && sync.x < aside.x + aside.width, JSON.stringify(sync));
+  ok('同步钮是小钮（不占一整列宽）', !!sync && sync.width < 120, sync ? String(sync.width) : 'no');
   const gear = await page.locator('[data-settings]').boundingBox();
-  ok('三颗按钮同一行', Math.abs(sync.y - gear.y) < 2 && Math.abs(sync.y - refresh.y) < 2, `${sync.y} / ${refresh.y} / ${gear.y}`);
-  // 从左到右：同步（占剩下的宽度）→ 刷新 → 齿轮
   ok(
-    '同步占大头、刷新居中、齿轮在最右',
-    sync.width > 100 && refresh.x >= sync.x + sync.width && gear.x >= refresh.x + refresh.width,
-    JSON.stringify({ sync, refresh, gear }),
+    '同步紧挨着设置（水平相邻，同一行）',
+    !!gear && !!sync && sync.x < gear.x && Math.abs(sync.y - gear.y) < 1,
+    `sync=${JSON.stringify(sync)} gear=${JSON.stringify(gear)}`,
+  );
+  ok(
+    '全应用只有一颗同步（状态栏上没有了）',
+    (await page.locator('footer.status-bar [data-sync]').count()) === 0,
   );
   await page.screenshot({ path: `${OUT}/08-左下角-dock.png` });
 }
 
-step('打开设置面板');
+step('打开设置对话框');
 await page.click('[data-settings]');
 await page.waitForSelector('[data-settings-panel]', { timeout: 5000 });
-ok('面板出来了', await page.isVisible('[data-settings-panel]'));
+ok('对话框出来了', await page.isVisible('[data-settings-panel]'));
 {
+  // 形状：遮罩 + 居中一张大卡。以前是从左边缘推出的抽屉（x≈0），
+  // 现在它必须真的"居中" —— 左边留出的空当要跟右边大致对称。
+  const vw = await page.evaluate(() => window.innerWidth);
+  const box = await page.locator('[data-settings-panel]').boundingBox();
+  ok('卡片比抽屉时代宽（横着铺得开四行排版）', !!box && box.width >= 700, box ? String(box.width) : 'no box');
+  ok(
+    '卡片居中（左右留白对称）',
+    !!box && Math.abs(box.x - (vw - box.x - box.width)) < 24,
+    JSON.stringify(box),
+  );
+  ok('遮罩在', (await page.locator('[data-settings-mask]').count()) === 1);
+
   const text = await page.textContent('[data-settings-panel]');
-  ok('分区是 同步 / 文件列表 / 关于', ['同步', '文件列表', '关于'].every((t) => text.includes(t)));
+  ok('四节导航都在', ['常规', '同步', '阅读', '关于'].every((t) => text.includes(t)));
   ok('面板里没有壁纸字样了', !text.includes('壁纸') && !text.includes('台面'));
+  ok('默认停在常规', (await page.getAttribute('[data-settings-panel]', 'data-settings-tab')) === 'general');
+  ok('导航项有四颗', (await page.locator('[data-settings-nav-item]').count()) === 4);
 }
-const panelX = await page.locator('[data-settings-panel]').boundingBox();
-ok('面板从左边出来（跟左下角的入口同一侧）', !!panelX && panelX.x < 2, JSON.stringify(panelX));
+
+step('分节导航切得动');
+{
+  await page.click('[data-settings-nav-item="reading"]');
+  await page.waitForTimeout(200);
+  ok('切到阅读', (await page.getAttribute('[data-settings-panel]', 'data-settings-tab')) === 'reading');
+  ok('阅读节的四行控件都在', await page.isVisible('[data-settings-panel] [data-reader-fonts]'));
+  ok('预览块也给了', await page.isVisible('[data-reader-preview]'));
+  ok('五档纸色都列出来了', (await page.locator('[data-set-theme-btn]').count()) === 5);
+  ok('四档字体都列出来了', (await page.locator('[data-set-font-btn]').count()) === 4);
+
+  await page.click('[data-settings-nav-item="about"]');
+  await page.waitForTimeout(200);
+  ok('关于里说了"真的 markdown 文件"', (await page.textContent('[data-settings-body]')).includes('markdown'));
+  await page.click('[data-settings-nav-item="general"]');
+  await page.waitForTimeout(200);
+  ok('常规节有显示全部文件的开关', await page.isVisible('[data-toggle="showall"]'));
+}
+
+/*
+ * 「阅读」一节不是摆设：在这改排版，读的时候得跟着变 ——
+ * 两处入口共用一份 store 状态（家在 IndexedDB），这里验的就是这条链路通着。
+ */
+step('阅读排版：设置里改，状态真的动了');
+{
+  const themeNow = () => page.evaluate(() => window.__suisui.getState().readerPrefs.theme);
+  await page.click('[data-settings-nav-item="reading"]');
+  await page.waitForTimeout(200);
+  const before = await themeNow();
+  const target = before === 'green' ? 'cyan' : 'green';
+  await page.click(`[data-set-theme-btn="${target}"]`);
+  await page.waitForTimeout(300);
+  ok('点了一档纸色，状态跟着走', (await themeNow()) === target, `${before} → ${await themeNow()}`);
+  ok('预览块的纸色属性也跟上了', (await page.getAttribute('[data-reader-preview]', 'data-book-theme')) === target);
+  // 还原，别把这套偏好留给后面的用例
+  await page.click(`[data-set-theme-btn="${before}"]`);
+  await page.waitForTimeout(200);
+  ok('能切回去', (await themeNow()) === before);
+}
 
 step('同步：后端不放假按钮');
+await page.click('[data-settings-nav-item="sync"]');
+await page.waitForTimeout(250);
 ok('三个后端都列出来了', (await page.locator('[data-provider]').count()) === 3);
 ok('GitHub 默认选中', (await page.getAttribute('[data-provider="github"]', 'class'))?.includes('bg-accent-soft') === true);
 // 没做完的后端必须是 disabled + 标「待接入」：给一个按了没反应的按钮比不给更糟
@@ -151,12 +230,20 @@ step('凭据：跟着后端走，搬出顶栏');
   await page.waitForTimeout(200);
 }
 
-step('Esc 收面板');
-await page.keyboard.press('Escape');
-await page.waitForTimeout(250);
-ok('面板关了', (await page.locator('[data-settings-panel]').count()) === 0);
+step('Esc 收面板，点遮罩也收');
+{
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  ok('Esc 关掉了', (await page.locator('[data-settings-panel]').count()) === 0);
+  // 再开一次，这回点遮罩 —— 两个手势说的是同一件事，都得管用
+  await page.click('[data-settings]');
+  await page.waitForSelector('[data-settings-panel]');
+  await page.mouse.click(12, 450); // 卡片居中，这个点落在遮罩上
+  await page.waitForTimeout(250);
+  ok('点遮罩也关掉了', (await page.locator('[data-settings-panel]').count()) === 0);
+}
 
-step('手机上：面板铺满宽度');
+step('手机上：整屏铺满，导航转横排');
 await page.setViewportSize({ width: 390, height: 844 });
 await page.reload({ waitUntil: 'domcontentloaded' });
 await page.waitForSelector('[data-settings]');
@@ -168,8 +255,8 @@ ok('齿轮也跟着抽屉进来了', await page.isVisible('[data-settings]'));
 await page.click('[data-settings]');
 await page.waitForSelector('[data-settings-panel]');
 const box = await page.locator('[data-settings-panel]').boundingBox();
-ok('面板占满窄屏', !!box && box.width >= 380, box ? String(box.width) : 'no box');
-ok('面板从左边出来（跟入口同一侧）', !!box && box.x < 2, box ? String(box.x) : 'no box');
+ok('设置铺满窄屏', !!box && box.width >= 380 && box.x < 2, box ? JSON.stringify(box) : 'no box');
+ok('分节导航横着排在顶上', await page.isVisible('[data-settings-nav]'));
 await page.screenshot({ path: `${OUT}/07-设置-手机.png` });
 
 step('控制台');
